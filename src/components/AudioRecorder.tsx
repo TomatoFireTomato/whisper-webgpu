@@ -44,7 +44,7 @@ export default function AudioRecorder(props: {
                 });
             }
 
-            let startTime = Date.now();
+            const startTime = Date.now();
 
             const mimeType = getMimeType();
             const mediaRecorder = new MediaRecorder(streamRef.current, {

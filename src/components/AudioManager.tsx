@@ -352,7 +352,7 @@ function SettingsTile(props: {
         setShowModal(false);
     };
 
-    const onSubmit = (url: string) => {
+    const onSubmit = () => {
         onClose();
     };
 
@@ -378,7 +378,7 @@ function SettingsModal(props: {
     const names = Object.values(LANGUAGES).map(titleCase);
 
     const models = MODELS.filter(
-        ([key, value]) =>
+        ([key, _value]) =>
             !props.transcriber.multilingual || !key.includes("/distil-"),
     ).map(([key, value]) => ({
         key,
@@ -627,7 +627,7 @@ function RecordTile(props: {
             <RecordModal
                 show={showModal}
                 onSubmit={onSubmit}
-                onProgress={(data) => {}}
+                onProgress={(_data) => {}}
                 onClose={onClose}
             />
         </>

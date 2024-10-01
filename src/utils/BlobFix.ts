@@ -251,8 +251,8 @@ class WebmBase<T> {
     data?: T;
 
     constructor(
-        private name = "Unknown",
-        private type = "Unknown",
+        public name = "Unknown",
+        public type = "Unknown",
     ) {}
 
     updateBySource() {}

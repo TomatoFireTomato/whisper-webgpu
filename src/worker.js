@@ -1,4 +1,4 @@
-/* eslint-disable camelcase */
+ 
 import { pipeline, WhisperTextStreamer } from "@huggingface/transformers";
 
 // Define model factories
