@@ -1,5 +1,5 @@
 /* eslint-disable camelcase */
-import { pipeline, WhisperTextStreamer } from "@xenova/transformers";
+import { pipeline, WhisperTextStreamer } from "@huggingface/transformers";
 
 // Define model factories
 // Ensures only one model is created of each type
@@ -17,10 +17,13 @@ class PipelineFactory {
         if (this.instance === null) {
             this.instance = pipeline(this.task, this.model, {
                 dtype: {
-                    encoder_model: 'fp32',
-                    decoder_model_merged: 'q4', // or 'fp32' ('fp16' is broken)
+                    encoder_model:
+                        this.model === "onnx-community/whisper-large-v3-turbo"
+                            ? "fp16"
+                            : "fp32",
+                    decoder_model_merged: "q4", // or 'fp32' ('fp16' is broken)
                 },
-                device: 'webgpu',
+                device: "webgpu",
                 progress_callback,
             });
         }
@@ -49,13 +52,7 @@ class AutomaticSpeechRecognitionPipelineFactory extends PipelineFactory {
     static model = null;
 }
 
-const transcribe = async ({
-    audio,
-    model,
-    subtask,
-    language,
-}) => {
-
+const transcribe = async ({ audio, model, subtask, language }) => {
     const isDistilWhisper = model.startsWith("distil-whisper/");
 
     const p = AutomaticSpeechRecognitionPipelineFactory;
@@ -97,7 +94,7 @@ const transcribe = async ({
         on_chunk_start: (x) => {
             const offset = (chunk_length_s - stride_length_s) * chunk_count;
             chunks.push({
-                text: '',
+                text: "",
                 timestamp: [offset + x, null],
                 finalised: false,
                 offset,
@@ -106,7 +103,7 @@ const transcribe = async ({
         token_callback_function: (x) => {
             start_time ??= performance.now();
             if (num_tokens++ > 0) {
-                tps = num_tokens / (performance.now() - start_time) * 1000;
+                tps = (num_tokens / (performance.now() - start_time)) * 1000;
             }
         },
         callback_function: (x) => {
@@ -117,7 +114,7 @@ const transcribe = async ({
             self.postMessage({
                 status: "update",
                 data: {
-                    text: '', // No need to send full text yet
+                    text: "", // No need to send full text yet
                     chunks,
                     tps,
                 },
@@ -133,7 +130,7 @@ const transcribe = async ({
             num_tokens = 0;
             ++chunk_count;
         },
-    })
+    });
 
     // Actually run transcription
     const output = await transcriber(audio, {

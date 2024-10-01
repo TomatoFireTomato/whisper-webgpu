@@ -11,7 +11,6 @@ interface ProgressItem {
     status: string;
 }
 
-
 interface TranscriberUpdateData {
     data: {
         text: string;
@@ -136,7 +135,7 @@ export function useTranscriber(): Transcriber {
 
                     audio = new Float32Array(left.length);
                     for (let i = 0; i < audioData.length; ++i) {
-                        audio[i] = SCALING_FACTOR * (left[i] + right[i]) / 2;
+                        audio[i] = (SCALING_FACTOR * (left[i] + right[i])) / 2;
                     }
                 } else {
                     // If the audio is not stereo, we can just use the first channel:
