@@ -3,8 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - main     # 你的主分支（常见：main / master）
-  workflow_dispatch:  # 手动触发
+      - main
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20   # 换你需要版本
+          node-version: 20
           cache: npm
 
       - name: Install dependencies
@@ -31,10 +31,11 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Upload artifact
+      # ⬇⬇⬇ 最重要部分：整个 dist 上传 ⬇⬇⬇
+      - name: Upload dist folder to Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist  # 构建输出目录
+          path: ./dist   # ⬅ 确保路径正确
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
