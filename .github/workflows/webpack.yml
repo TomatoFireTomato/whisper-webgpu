@@ -1,0 +1,41 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      # ⬇⬇⬇ 最重要部分：整个 dist 上传 ⬇⬇⬇
+      - name: Upload dist folder to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist   # ⬅ 确保路径正确
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
