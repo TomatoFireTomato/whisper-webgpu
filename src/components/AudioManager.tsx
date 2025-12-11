@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import Modal from "./modal/Modal";
 import { UrlInput } from "./modal/UrlInput";
@@ -123,6 +123,17 @@ const LANGUAGES = {
     su: "sundanese",
 };
 
+const MODELS = Object.entries({
+    // Original checkpoints
+    "onnx-community/whisper-tiny": 120, // 33 + 87
+    "onnx-community/whisper-base": 206, // 83 + 123
+    "onnx-community/whisper-small": 586, // 353 + 233
+    "onnx-community/whisper-large-v3-turbo": 1604, // 1270 + 334
+
+    // Distil Whisper (English-only)
+    "onnx-community/distil-small.en": 538, // 353 + 185
+});
+
 export enum AudioSource {
     URL = "URL",
     FILE = "FILE",
@@ -130,7 +141,7 @@ export enum AudioSource {
 }
 
 export function AudioManager(props: { transcriber: Transcriber }) {
-    const [progress, setProgress] = useState<number | undefined>(undefined);
+    const [progress, setProgress] = useState<number | undefined>(0);
     const [audioData, setAudioData] = useState<
         | {
               buffer: AudioBuffer;
@@ -143,8 +154,6 @@ export function AudioManager(props: { transcriber: Transcriber }) {
     const [audioDownloadUrl, setAudioDownloadUrl] = useState<
         string | undefined
     >(undefined);
-
-    const isAudioLoading = progress !== undefined;
 
     const resetAudio = () => {
         setAudioData(undefined);
@@ -220,7 +229,6 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                 setAudioFromDownload(data, mimeType);
             } catch (error) {
                 console.log("Request failed or aborted", error);
-            } finally {
                 setProgress(undefined);
             }
         }
@@ -277,12 +285,15 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                         </>
                     )}
                 </div>
-                {
-                    <AudioDataBar
-                        progress={isAudioLoading ? progress : +!!audioData}
-                    />
-                }
+                <AudioDataBar
+                    progress={
+                        progress !== undefined && audioData
+                            ? 1
+                            : (progress ?? 0)
+                    }
+                />
             </div>
+
             {audioData && (
                 <>
                     <AudioPlayer
@@ -296,18 +307,11 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                                 props.transcriber.start(audioData.buffer);
                             }}
                             isModelLoading={props.transcriber.isModelLoading}
-                            // isAudioLoading ||
                             isTranscribing={props.transcriber.isBusy}
-                        />
-
-                        <SettingsTile
-                            className='absolute right-4'
-                            transcriber={props.transcriber}
-                            icon={<SettingsIcon />}
                         />
                     </div>
                     {props.transcriber.progressItems.length > 0 && (
-                        <div className='relative z-10 p-4 w-full'>
+                        <div className='relative z-10 p-4 w-full text-center'>
                             <label>
                                 Loading model files... (only run once)
                             </label>
@@ -323,6 +327,12 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                     )}
                 </>
             )}
+
+            <SettingsTile
+                className='absolute bottom-4 right-4'
+                transcriber={props.transcriber}
+                icon={<SettingsIcon />}
+            />
         </>
     );
 }
@@ -342,7 +352,7 @@ function SettingsTile(props: {
         setShowModal(false);
     };
 
-    const onSubmit = (url: string) => {
+    const onSubmit = () => {
         onClose();
     };
 
@@ -367,17 +377,14 @@ function SettingsModal(props: {
 }) {
     const names = Object.values(LANGUAGES).map(titleCase);
 
-    const models = {
-        // Original checkpoints
-        'Xenova/whisper-tiny': [41, 152],
-        'Xenova/whisper-base': [77, 291],
-        'Xenova/whisper-small': [249],
-        'Xenova/whisper-medium': [776],
-
-        // Distil Whisper (English-only)
-        'distil-whisper/distil-medium.en': [402],
-        'distil-whisper/distil-large-v2': [767],
-    };
+    const models = MODELS.filter(
+        ([key, _value]) =>
+            !props.transcriber.multilingual || !key.includes("/distil-"),
+    ).map(([key, value]) => ({
+        key,
+        size: value,
+        id: `${key}${props.transcriber.multilingual || key.includes("/distil-") ? "" : ".en"}`,
+    }));
     return (
         <Modal
             show={props.show}
@@ -387,41 +394,30 @@ function SettingsModal(props: {
                     <label>Select the model to use.</label>
                     <select
                         className='mt-1 mb-1 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500'
-                        defaultValue={props.transcriber.model}
+                        value={props.transcriber.model}
                         onChange={(e) => {
                             props.transcriber.setModel(e.target.value);
                         }}
                     >
-                        {Object.keys(models)
-                            .filter(
-                                (key) =>
-                                    props.transcriber.quantized ||
-                                    // @ts-ignore
-                                    models[key].length == 2,
-                            )
-                            .filter(
-                                (key) => (
-                                    !props.transcriber.multilingual || !key.startsWith('distil-whisper/')
-                                )
-                            )
-                            .map((key) => (
-                                <option key={key} value={key}>{`${key}${
-                                    (props.transcriber.multilingual || key.startsWith('distil-whisper/')) ? "" : ".en"
-                                } (${
-                                    // @ts-ignore
-                                    models[key][
-                                        props.transcriber.quantized ? 0 : 1
-                                    ]
-                                }MB)`}</option>
-                            ))}
+                        {models.map(({ key, id, size }) => (
+                            <option
+                                key={key}
+                                value={id}
+                            >{`${id} (${size}MB)`}</option>
+                        ))}
                     </select>
-                    <div className='flex justify-between items-center mb-3 px-1'>
+                    <div className='flex justify-end items-center mb-3 px-1'>
                         <div className='flex'>
                             <input
                                 id='multilingual'
                                 type='checkbox'
                                 checked={props.transcriber.multilingual}
                                 onChange={(e) => {
+                                    let model = Constants.DEFAULT_MODEL;
+                                    if (!e.target.checked) {
+                                        model += ".en";
+                                    }
+                                    props.transcriber.setModel(model);
                                     props.transcriber.setMultilingual(
                                         e.target.checked,
                                     );
@@ -429,21 +425,6 @@ function SettingsModal(props: {
                             ></input>
                             <label htmlFor={"multilingual"} className='ms-1'>
                                 Multilingual
-                            </label>
-                        </div>
-                        <div className='flex'>
-                            <input
-                                id='quantize'
-                                type='checkbox'
-                                checked={props.transcriber.quantized}
-                                onChange={(e) => {
-                                    props.transcriber.setQuantized(
-                                        e.target.checked,
-                                    );
-                                }}
-                            ></input>
-                            <label htmlFor={"quantize"} className='ms-1'>
-                                Quantized
                             </label>
                         </div>
                     </div>
@@ -500,7 +481,7 @@ function AudioDataBar(props: { progress: number }) {
 
 function ProgressBar(props: { progress: string }) {
     return (
-        <div className='w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700'>
+        <div className='w-full rounded-full h-1 bg-gray-200 dark:bg-gray-700'>
             <div
                 className='bg-blue-600 h-1 rounded-full transition-all duration-100'
                 style={{ width: props.progress }}
@@ -578,14 +559,12 @@ function FileTile(props: {
         mimeType: string,
     ) => void;
 }) {
-    // const audioPlayer = useRef<HTMLAudioElement>(null);
-
     // Create hidden input element
-    let elem = document.createElement("input");
+    const elem = document.createElement("input");
     elem.type = "file";
     elem.oninput = (event) => {
         // Make sure we have files to use
-        let files = (event.target as HTMLInputElement).files;
+        const files = (event.target as HTMLInputElement).files;
         if (!files) return;
 
         // Create a blob that we can use as an src for our audio element
@@ -612,13 +591,11 @@ function FileTile(props: {
     };
 
     return (
-        <>
-            <Tile
-                icon={props.icon}
-                text={props.text}
-                onClick={() => elem.click()}
-            />
-        </>
+        <Tile
+            icon={props.icon}
+            text={props.text}
+            onClick={() => elem.click()}
+        />
     );
 }
 
@@ -650,6 +627,7 @@ function RecordTile(props: {
             <RecordModal
                 show={showModal}
                 onSubmit={onSubmit}
+                onProgress={(_data) => {}}
                 onClose={onClose}
             />
         </>
@@ -658,6 +636,7 @@ function RecordTile(props: {
 
 function RecordModal(props: {
     show: boolean;
+    onProgress: (data: Blob | undefined) => void;
     onSubmit: (data: Blob | undefined) => void;
     onClose: () => void;
 }) {
@@ -684,7 +663,12 @@ function RecordModal(props: {
             content={
                 <>
                     {"Record audio using your microphone"}
-                    <AudioRecorder onRecordingComplete={onRecordingComplete} />
+                    <AudioRecorder
+                        onRecordingProgress={(blob) => {
+                            props.onProgress(blob);
+                        }}
+                        onRecordingComplete={onRecordingComplete}
+                    />
                 </>
             }
             onClose={onClose}

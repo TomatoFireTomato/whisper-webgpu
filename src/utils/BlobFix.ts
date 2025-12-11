@@ -14,6 +14,7 @@
  * This is the list of possible WEBM file sections by their IDs.
  * Possible types: Container, Binary, Uint, Int, String, Float, Date
  */
+// @ts-nocheck
 interface Section {
     name: string;
     type: string;
@@ -250,7 +251,10 @@ class WebmBase<T> {
     source?: Uint8Array;
     data?: T;
 
-    constructor(private name = "Unknown", private type = "Unknown") {}
+    constructor(
+        public name = "Unknown",
+        public type = "Unknown",
+    ) {}
 
     updateBySource() {}
 

@@ -19,8 +19,8 @@ export default function Transcript({ transcribedData }: Props) {
         URL.revokeObjectURL(url);
     };
     const exportTXT = () => {
-        let chunks = transcribedData?.chunks ?? [];
-        let text = chunks
+        const chunks = transcribedData?.chunks ?? [];
+        const text = chunks
             .map((chunk) => chunk.text)
             .join("")
             .trim();
@@ -32,7 +32,7 @@ export default function Transcript({ transcribedData }: Props) {
         let jsonData = JSON.stringify(transcribedData?.chunks ?? [], null, 2);
 
         // post-process the JSON to make it more readable
-        const regex = /(    "timestamp": )\[\s+(\S+)\s+(\S+)\s+\]/gm;
+        const regex = /( {4}"timestamp": )\[\s+(\S+)\s+(\S+)\s+\]/gm;
         jsonData = jsonData.replace(regex, "$1[$2 $3]");
 
         const blob = new Blob([jsonData], { type: "application/json" });
@@ -48,7 +48,7 @@ export default function Transcript({ transcribedData }: Props) {
                     divRef.current.scrollHeight,
             );
 
-            if (diff <= 64) {
+            if (diff <= 100) {
                 // We're close enough to the bottom, so scroll to the bottom
                 divRef.current.scrollTop = divRef.current.scrollHeight;
             }
@@ -64,7 +64,7 @@ export default function Transcript({ transcribedData }: Props) {
                 transcribedData.chunks.map((chunk, i) => (
                     <div
                         key={`${i}-${chunk.text}`}
-                        className='w-full flex flex-row mb-2 bg-white rounded-lg p-4 shadow-xl shadow-black/5 ring-1 ring-slate-700/10'
+                        className={`w-full flex flex-row mb-2 ${transcribedData?.isBusy ? "bg-gray-100" : "bg-white"} rounded-lg p-4 shadow-xl shadow-black/5 ring-1 ring-slate-700/10`}
                     >
                         <div className='mr-5'>
                             {formatAudioTimestamp(chunk.timestamp[0])}
@@ -72,6 +72,14 @@ export default function Transcript({ transcribedData }: Props) {
                         {chunk.text}
                     </div>
                 ))}
+            {transcribedData?.tps && (
+                <p className='text-sm text-center mt-4 mb-1'>
+                    <span className='font-semibold text-black'>
+                        {transcribedData?.tps.toFixed(2)}
+                    </span>{" "}
+                    <span className='text-gray-500'>tokens/second</span>
+                </p>
+            )}
             {transcribedData && !transcribedData.isBusy && (
                 <div className='w-full text-right'>
                     <button
