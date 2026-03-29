@@ -1,153 +1,169 @@
 // ==UserScript==
-// @name         B站外挂字幕（双语时间轴合并版）
+// @name         B站外挂字幕
 // @namespace    http://tampermonkey.net/
-// @version      0.3
-// @description  为B站视频加载本地字幕文件，自动将相同时间轴的两条字幕合并为双语显示
+// @version      0.1
+// @description  为B站视频加载本地字幕文件，支持实时滚动显示
 // @author       You
 // @match        https://www.bilibili.com/video/*
 // @match        https://www.bilibili.com/bangumi/play/*
 // @grant        none
 // @license      MIT
+// @downloadURL https://update.greasyfork.org/scripts/556329/B%E7%AB%99%E5%A4%96%E6%8C%82%E5%AD%97%E5%B9%95.user.js
+// @updateURL https://update.greasyfork.org/scripts/556329/B%E7%AB%99%E5%A4%96%E6%8C%82%E5%AD%97%E5%B9%95.meta.js
 // ==/UserScript==
 
-(function () {
+(function() {
     'use strict';
 
-    /* ========== 字幕显示区域 ========== */
-    const subtitleBox = document.createElement('div');
-    subtitleBox.style.position = 'absolute';
-    subtitleBox.style.bottom = '12%';
-    subtitleBox.style.left = '50%';
-    subtitleBox.style.transform = 'translateX(-50%)';
-    subtitleBox.style.width = '80%';
-    subtitleBox.style.textAlign = 'center';
-    subtitleBox.style.zIndex = '9999';
-    subtitleBox.style.pointerEvents = 'none';
+    // 创建字幕显示区域
+    let subtitleDiv = document.createElement('div');
+    subtitleDiv.style.position = 'absolute';
+    subtitleDiv.style.bottom = '10%';
+    subtitleDiv.style.left = '50%';
+    subtitleDiv.style.transform = 'translateX(-50%)';
+    subtitleDiv.style.color = 'white';
+    subtitleDiv.style.fontSize = 'clamp(16px, 2.2vw, 32px)';
+    subtitleDiv.style.lineHeight = '1.5';
+    subtitleDiv.style.textShadow = '2px 2px 4px black';
+    subtitleDiv.style.zIndex = '9999';
+    subtitleDiv.style.textAlign = 'center';
+    subtitleDiv.style.width = '80%';
+    subtitleDiv.style.minHeight = '30px';
+    subtitleDiv.style.pointerEvents = 'none';
+    subtitleDiv.style.userSelect = 'none';
+    subtitleDiv.style.whiteSpace = 'pre-wrap';
+    subtitleDiv.innerHTML = '';
 
-    subtitleBox.innerHTML = `
-        <div id="sub-line-1" style="
-            font-size: 24px;
-            color: white;
-            text-shadow: 2px 2px 4px black;
-        "></div>
-        <div id="sub-line-2" style="
-            margin-top: 4px;
-            font-size: 20px;
-            color: #ddd;
-            text-shadow: 2px 2px 4px black;
-        "></div>
-    `;
+    function mountSubtitleDiv() {
+        let videoContainer = document.querySelector('.bpx-player-video-wrap');
+        if (!videoContainer) return false;
 
-    function mountSubtitleBox() {
-        const container = document.querySelector('.bpx-player-video-wrap');
-        if (container && !container.querySelector('#sub-line-1')) {
-            container.style.position = 'relative';
-            container.appendChild(subtitleBox);
+        if (getComputedStyle(videoContainer).position === 'static') {
+            videoContainer.style.position = 'relative';
         }
+
+        if (!subtitleDiv.parentNode) {
+            videoContainer.appendChild(subtitleDiv);
+        }
+        return true;
     }
 
-    mountSubtitleBox();
-    new MutationObserver(mountSubtitleBox).observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-
-    const line1 = subtitleBox.querySelector('#sub-line-1');
-    const line2 = subtitleBox.querySelector('#sub-line-2');
-
-    /* ========== 文件选择 ========== */
-    const fileInput = document.createElement('input');
+    // 创建文件输入框，用于加载字幕文件
+    let fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = '.srt';
+    fileInput.accept = '.srt,.vtt,.ass';
     fileInput.style.position = 'fixed';
     fileInput.style.top = '10px';
     fileInput.style.right = '10px';
     fileInput.style.zIndex = '9999';
     document.body.appendChild(fileInput);
 
-    let subtitles = [];
+    let subtitles = []; // 存储解析后的字幕数组
 
-    /* ========== SRT 解析 & 双语合并 ========== */
+    // 解析SRT字幕文件
     function parseSRT(text) {
-        const blocks = text.trim().split(/\n\s*\n/);
-        const temp = [];
+        let lines = text.split(/\r?\n/);
+        let subtitles = [];
+        let current = {};
 
-        for (const block of blocks) {
-            const lines = block.split('\n').map(l => l.trim());
-            if (lines.length < 3) continue;
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (!line) continue;
 
-            const [start, end] = lines[1]
-                .split('-->')
-                .map(t => parseTime(t.trim()));
+            // 序号
+            if (!current.index) {
+                current.index = parseInt(line);
+                continue;
+            }
 
-            const content = lines.slice(2).join('<br>');
-            temp.push({ start, end, text: content });
-        }
+            // 时间轴
+            if (line.includes('-->')) {
+                let times = line.split('-->');
+                current.start = parseTime(times[0].trim());
+                current.end = parseTime(times[1].trim());
+                continue;
+            }
 
-        const result = [];
-        for (let i = 0; i < temp.length; i += 2) {
-            const a = temp[i];
-            const b = temp[i + 1];
+            // 字幕文本
+            if (current.start !== undefined) {
+                if (current.text) {
+                    current.text += '<br>' + line;
+                } else {
+                    current.text = line;
+                }
 
-            if (b && a.start === b.start && a.end === b.end) {
-                result.push({
-                    start: a.start,
-                    end: a.end,
-                    line1: a.text,
-                    line2: b.text
-                });
-            } else {
-                // 容错：单语
-                result.push({
-                    start: a.start,
-                    end: a.end,
-                    line1: a.text,
-                    line2: ''
-                });
-                i--;
+                // 如果下一行是空行或者新的序号，则保存当前字幕
+                if (i+1 < lines.length && (lines[i+1].trim() === '' || /^\d+$/.test(lines[i+1].trim()))) {
+                    subtitles.push(current);
+                    current = {};
+                }
             }
         }
-        return result;
+
+        // 添加最后一个字幕
+        if (current.text) {
+            subtitles.push(current);
+        }
+
+        return subtitles;
     }
 
-    function parseTime(t) {
-        const [h, m, s] = t.split(':');
-        return (+h) * 3600 + (+m) * 60 + parseFloat(s.replace(',', '.'));
+    // 时间格式转换，将SRT时间格式转换为秒
+    function parseTime(timeStr) {
+        let parts = timeStr.split(':');
+        let seconds = 0;
+        if (parts.length === 3) {
+            seconds += parseFloat(parts[0]) * 3600;
+            seconds += parseFloat(parts[1]) * 60;
+            seconds += parseFloat(parts[2].replace(',', '.'));
+        }
+        return seconds;
     }
 
-    fileInput.addEventListener('change', e => {
-        const file = e.target.files[0];
+    // 文件输入变化时，读取字幕文件
+    fileInput.addEventListener('change', function(e) {
+        let file = e.target.files[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = e => {
-            subtitles = parseSRT(e.target.result);
-            console.log('[外挂字幕] 已加载字幕条数:', subtitles.length);
+        let reader = new FileReader();
+        reader.onload = function(e) {
+            let text = e.target.result;
+            subtitles = parseSRT(text);
         };
         reader.readAsText(file);
     });
 
-    /* ========== 视频时间同步 ========== */
     function bindVideo() {
-        const video = document.querySelector('video');
-        if (!video) return false;
+        let video = document.querySelector('video');
+        if (!video || video.dataset.externalSubtitleBound === 'true') return false;
 
-        video.addEventListener('timeupdate', () => {
-            const t = video.currentTime;
-            const sub = subtitles.find(s => t >= s.start && t <= s.end);
+        video.dataset.externalSubtitleBound = 'true';
+        video.addEventListener('timeupdate', function() {
+            let currentTime = video.currentTime;
+            let currentSubtitle = '';
 
-            if (sub) {
-                line1.innerHTML = sub.line1 || '';
-                line2.innerHTML = sub.line2 || '';
-            } else {
-                line1.innerHTML = '';
-                line2.innerHTML = '';
+            for (let i = 0; i < subtitles.length; i++) {
+                if (currentTime >= subtitles[i].start && currentTime <= subtitles[i].end) {
+                    currentSubtitle = subtitles[i].text;
+                    break;
+                }
             }
+
+            subtitleDiv.innerHTML = currentSubtitle;
         });
         return true;
     }
 
-    const timer = setInterval(() => {
-        if (bindVideo()) clearInterval(timer);
-    }, 500);
+    mountSubtitleDiv();
+    bindVideo();
+
+    let observer = new MutationObserver(function() {
+        mountSubtitleDiv();
+        bindVideo();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
 })();
