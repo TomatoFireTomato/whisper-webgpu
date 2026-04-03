@@ -1,27 +1,77 @@
-# Sidebar Whisper
+# Sidebar Whisper 使用教程
 
-Chrome side-panel extension for **local** speech-to-text with Whisper and WebGPU—audio stays on your device. Built with [🤗 Transformers.js](https://github.com/xenova/transformers.js).
+**Sidebar Whisper** 是一款 Chrome 扩展：在**侧边栏**里用浏览器本地的 **Whisper + WebGPU** 做语音转文字，音频与转写过程**默认不离开你的设备**（模型与推理在本地完成）。
 
-Upstream Whisper WebGPU demo: [Hugging Face Space](https://huggingface.co/spaces/Xenova/whisper-webgpu).
+---
 
-https://github.com/xenova/whisper-web/assets/26504141/5d6ed3d9-5f99-4d89-8e38-9d4fc8d5baaf
+## 一、使用前准备
 
-## Running locally
+1. **浏览器**：建议使用 **Chrome** 或 **Edge**（Chromium 系），版本 **≥ 120**，且已开启 **WebGPU**。  
+   - 若打开扩展后提示「不支持 WebGPU」，请更新浏览器或换用上述浏览器。
 
-1. Clone the repo and install dependencies:
+2. **安装扩展**（任选一种）：
+   - **开发者模式加载**：解压构建产物中的 `dist` 文件夹 → 打开 `chrome://extensions` → 打开「开发者模式」→ **加载已解压的扩展程序** → 选择该 `dist` 目录。  
+   - **从 GitHub 下载构建包**：仓库 **Actions** → 最新成功的 **Build** → 底部 **Artifacts** → 下载 **`sidebar-whisper-dist`**，解压后同上加载其中的 `dist`。
 
-    ```bash
-    git clone https://github.com/xenova/whisper-web.git
-    cd whisper-web
-    npm install
-    ```
+3. **打开方式**：点击浏览器工具栏上的扩展图标，会在**侧边栏**打开 Sidebar Whisper（无需新开标签页）。
 
-2. Run the development server:
+---
 
-    ```bash
-    npm run dev
-    ```
-    > Firefox users need to change the `dom.workers.modules.enabled` setting in `about:config` to `true` to enable Web Workers.
-    > Check out [this issue](https://github.com/xenova/whisper-web/issues/8) for more details.
+## 二、准备音频
 
-3. Open the link (e.g., [http://localhost:5173/](http://localhost:5173/)) in your browser.
+1. **本地文件**：在「音频」区域 **点击或拖拽** 常见音频格式（如 mp3、wav、m4a 等）。
+
+2. **在线视频**：扩展内不直接解析视频站链接。请先到 [Cobalt](https://cobalt.tools/) 等工具页面，粘贴视频链接并**只下载音频**，再回到本扩展上传下载好的文件。请遵守第三方服务与内容的版权规定。
+
+---
+
+## 三、转写设置（左侧「转写配置」）
+
+- **模型**：按需选择体积与速度；设备内存/显存紧张时可先试较小模型。  
+- **多语言模式**：开启后可选择**源语言**；关闭时按英文等默认逻辑。  
+- **Hugging Face 镜像**：国内访问模型较慢时，可开启镜像加速下载。  
+- **字幕翻译服务**：向 B 站页面发送双语字幕时，会使用此处选择的翻译后端（如 Bing、Google 等）；默认一般为 Bing。
+
+设置会保存在本机浏览器，关闭侧边栏后再打开仍会保留。
+
+---
+
+## 四、开始转写
+
+1. 选好音频并确认设置后，点击 **「开始转写」**（或同类按钮）。  
+2. **首次使用**某模型时，需要从网络拉取模型文件，请耐心等待；进度会在界面中显示。  
+3. 转写过程中可看到实时片段；完成后会显示速度与完整结果。
+
+---
+
+## 五、查看与管理结果
+
+- **转写结果**以**列表**展示：每条记录一行，默认**收起**详细时间轴；点击左侧区域可**展开**查看逐句与时间戳。  
+- **历史记录**会缓存在本地（不含音频），可展开列表、点击加载、删除单条或清空。  
+- 每条记录右侧可 **导出 SRT / TXT / JSON**，或将字幕 **发送到当前标签页**（适用于 B 站等已适配页面；发送后会按播放进度叠加字幕，翻译在后台分批进行）。
+
+---
+
+## 六、常见问题
+
+| 现象 | 建议 |
+|------|------|
+| 提示不支持 WebGPU | 换用最新 Chrome/Edge，检查 `chrome://gpu` |
+| 转写报错或浏览器卡死 | 换更小模型、关闭占用 GPU 的页面、减少同时打开的标签 |
+| 发送到网页无反应 | 确认当前标签为支持页面（如 B 站视频页），并已允许扩展访问该站 |
+| 字幕翻译很慢 | 属正常现象；可先看到原文，译文会随进度更新 |
+
+---
+
+## 七、开发者与本仓库
+
+本地开发与构建：
+
+```bash
+npm install
+npm run dev          # 开发调试
+npm run build        # 生成 dist，用于加载扩展
+```
+
+- **GitHub Actions**：推送到 `main` 会执行构建，并上传 **`sidebar-whisper-dist`** 供下载；同时可在仓库开启 **GitHub Pages**（Source：GitHub Actions）用于在线预览构建结果。  
+- 技术栈：基于 [Transformers.js](https://github.com/xenova/transformers.js) 与 Whisper 模型在浏览器中推理。

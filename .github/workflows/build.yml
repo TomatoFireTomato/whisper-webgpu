@@ -1,0 +1,64 @@
+# 构建 dist → 上传可下载 Artifacts；在 main 上推送/手动运行时同时部署 GitHub Pages
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 避免并发部署互相覆盖
+concurrency:
+  group: pages-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload dist artifact (download zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidebar-whisper-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+
+      # 仅 main 分支：供 deploy job 使用（PR 不部署 Pages）
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+  deploy-pages:
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
