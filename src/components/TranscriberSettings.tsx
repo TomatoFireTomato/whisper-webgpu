@@ -1,5 +1,9 @@
 import Constants from "../utils/Constants";
 import { Transcriber } from "../hooks/useTranscriber";
+import {
+    isTranslationServiceId,
+    TRANSLATION_SERVICE_OPTIONS,
+} from "../utils/subtitleTranslate";
 
 function titleCase(str: string) {
     str = str.toLowerCase();
@@ -139,9 +143,12 @@ export function TranscriberSettings(props: { transcriber: Transcriber }) {
 
     return (
         <section className='rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-lg shadow-slate-200/50 backdrop-blur-sm lg:sticky lg:top-8'>
-            <h2 className='mb-4 text-lg font-semibold tracking-tight text-slate-900'>
+            <h2 className='mb-1 text-lg font-semibold tracking-tight text-slate-900'>
                 转写配置
             </h2>
+            <p className='mb-4 text-xs text-slate-500'>
+                以下选项会保存在本机浏览器；关闭侧边栏再打开仍会恢复。
+            </p>
             <div className='space-y-4'>
                 <div>
                     <label className={labelClass} htmlFor='model-select'>
@@ -186,6 +193,47 @@ export function TranscriberSettings(props: { transcriber: Transcriber }) {
                     />
                 </div>
 
+                <div className='rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5'>
+                    <p className='text-sm font-medium text-slate-700'>
+                        B 站双语字幕
+                    </p>
+                    <p className='mt-0.5 text-xs text-slate-500'>
+                        在 B 站视频页点「发送字幕到当前页」时，扩展会先用所选服务批量翻译，再在播放器上叠加显示（与沉浸式「先整轨翻译、再按时间轴显示」一致）。多语言模式下「源语言」用于翻译方向；关闭多语言时按英文转写源文译成中文。
+                    </p>
+                    <label
+                        className={`${labelClass} mt-3 block`}
+                        htmlFor='subtitle-translate-service'
+                    >
+                        字幕翻译服务
+                    </label>
+                    <select
+                        id='subtitle-translate-service'
+                        className={selectClass}
+                        value={props.transcriber.subtitleTranslateService}
+                        onChange={(e) => {
+                            const v = e.target.value;
+                            if (isTranslationServiceId(v)) {
+                                props.transcriber.setSubtitleTranslateService(v);
+                            }
+                        }}
+                    >
+                        {TRANSLATION_SERVICE_OPTIONS.map((o) => (
+                            <option key={o.id} value={o.id} title={o.hint}>
+                                {o.label}
+                            </option>
+                        ))}
+                    </select>
+                    <p className='mt-1 text-xs text-slate-400'>
+                        {
+                            TRANSLATION_SERVICE_OPTIONS.find(
+                                (o) =>
+                                    o.id ===
+                                    props.transcriber.subtitleTranslateService,
+                            )?.hint
+                        }
+                    </p>
+                </div>
+
                 <div className='flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5'>
                     <label
                         htmlFor='multilingual'
@@ -228,24 +276,6 @@ export function TranscriberSettings(props: { transcriber: Transcriber }) {
                                         {names[i]}
                                     </option>
                                 ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className={labelClass} htmlFor='task-select'>
-                                任务
-                            </label>
-                            <select
-                                id='task-select'
-                                className={selectClass}
-                                value={props.transcriber.subtask}
-                                onChange={(e) => {
-                                    props.transcriber.setSubtask(e.target.value);
-                                }}
-                            >
-                                <option value='transcribe'>转写</option>
-                                <option value='translate'>
-                                    翻译为英文
-                                </option>
                             </select>
                         </div>
                     </>

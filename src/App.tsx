@@ -17,7 +17,7 @@ function App() {
                         Browser · WebGPU
                     </p>
                     <h1 className='bg-gradient-to-r from-slate-900 via-slate-800 to-sky-800 bg-clip-text text-4xl font-extrabold tracking-tight text-transparent sm:text-5xl'>
-                        Whisper WebGPU
+                        Sidebar Whisper
                     </h1>
                     <p className='mx-auto mt-3 max-w-xl text-base text-slate-600 sm:text-lg'>
                         在浏览器中本地转写语音，数据不离开你的设备
@@ -34,7 +34,10 @@ function App() {
                             <h2 className='mb-4 text-lg font-semibold tracking-tight text-slate-900'>
                                 转写结果
                             </h2>
-                            <Transcript transcribedData={transcriber.output} />
+                            <Transcript
+                                transcribedData={transcriber.output}
+                                transcriber={transcriber}
+                            />
                         </section>
                     </div>
                 </div>

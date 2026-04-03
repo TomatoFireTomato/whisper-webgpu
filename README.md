@@ -1,8 +1,8 @@
-# Whisper Web
+# Sidebar Whisper
 
-ML-powered speech recognition directly in your browser! Built with [🤗 Transformers.js](https://github.com/xenova/transformers.js).
+Chrome side-panel extension for **local** speech-to-text with Whisper and WebGPU—audio stays on your device. Built with [🤗 Transformers.js](https://github.com/xenova/transformers.js).
 
-Check out the demo site [here](https://huggingface.co/spaces/Xenova/whisper-webgpu).
+Upstream Whisper WebGPU demo: [Hugging Face Space](https://huggingface.co/spaces/Xenova/whisper-webgpu).
 
 https://github.com/xenova/whisper-web/assets/26504141/5d6ed3d9-5f99-4d89-8e38-9d4fc8d5baaf
 

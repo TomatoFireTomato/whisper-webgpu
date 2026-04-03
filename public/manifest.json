@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Whisper WebGPU",
+  "name": "Sidebar Whisper",
   "version": "1.0.0",
   "minimum_chrome_version": "120",
-  "description": "浏览器本地语音转写（Whisper + WebGPU）",
+  "description": "Local Whisper speech-to-text in the side panel (WebGPU). 浏览器侧栏本地语音转写。",
   "action": {
-    "default_title": "在侧边栏打开 Whisper WebGPU"
+    "default_title": "Open Sidebar Whisper"
   },
   "side_panel": {
     "default_path": "index.html"
@@ -13,10 +13,17 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["sidePanel"],
+  "permissions": ["sidePanel", "scripting", "activeTab"],
   "host_permissions": [
     "https://huggingface.co/*",
-    "https://hf-mirror.com/*"
+    "https://hf-mirror.com/*",
+    "https://*.bilibili.com/*",
+    "https://bilibili.com/*",
+    "https://translate.googleapis.com/*",
+    "https://www.bing.com/*",
+    "https://lingva.ml/*",
+    "https://api.mymemory.translated.net/*",
+    "https://libretranslate.com/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'self'"

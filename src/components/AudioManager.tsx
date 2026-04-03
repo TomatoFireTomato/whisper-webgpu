@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import AudioPlayer from "./AudioPlayer";
+import { CobaltPageAudio } from "./CobaltPageAudio";
 import { TranscribeButton } from "./TranscribeButton";
 import Constants from "../utils/Constants";
 import { Transcriber } from "../hooks/useTranscriber";
@@ -12,6 +13,7 @@ export function AudioManager(props: { transcriber: Transcriber }) {
               buffer: AudioBuffer;
               url: string;
               mimeType: string;
+              fileName: string;
           }
         | undefined
     >(undefined);
@@ -52,6 +54,7 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                     buffer: decoded,
                     url: blobUrl,
                     mimeType,
+                    fileName: file.name || "音频",
                 });
             };
             reader.readAsArrayBuffer(file);
@@ -117,6 +120,7 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                 {progress !== undefined && (
                     <AudioDataBar progress={progress} />
                 )}
+                <CobaltPageAudio />
             </section>
 
             {audioData && (
@@ -134,7 +138,9 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                     <div className='flex justify-center'>
                         <TranscribeButton
                             onClick={() => {
-                                props.transcriber.start(audioData.buffer);
+                                props.transcriber.start(audioData.buffer, {
+                                    fileName: audioData.fileName,
+                                });
                             }}
                             isModelLoading={props.transcriber.isModelLoading}
                             isTranscribing={props.transcriber.isBusy}

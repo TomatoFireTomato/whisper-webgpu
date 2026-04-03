@@ -1,39 +1,34 @@
 import { env, pipeline, WhisperTextStreamer } from "@huggingface/transformers";
 
-// ONNX Runtime WASM：使用本地 public/ort/（构建后为站点根目录 /ort/），不再从 jsdelivr 拉取
-// 请将文件放入 public/ort/，详见 public/ort/README.txt
+// ONNX Runtime WASM：使用本地 public/ort/
 const ortWasmBase = new URL(
     /* @vite-ignore */ "../ort/",
     import.meta.url,
 ).href;
 if (env.backends.onnx?.wasm) {
     env.backends.onnx.wasm.wasmPaths = ortWasmBase;
+    // 单线程 WASM，减少子 Worker + 双模型时的总内存（扩展/低内存设备更稳）
+    env.backends.onnx.wasm.numThreads = 1;
 }
 
 const HF_OFFICIAL_HOST = "https://huggingface.co/";
 const HF_MIRROR_HOST = "https://hf-mirror.com/";
 
-// Define model factories
-// Ensures only one model is created of each type
 class PipelineFactory {
     static task = null;
     static model = null;
     static instance = null;
 
-    constructor(tokenizer, model) {
-        this.tokenizer = tokenizer;
-        this.model = model;
-    }
-
     static async getInstance(progress_callback = null) {
         if (this.instance === null) {
-            this.instance = pipeline(this.task, this.model, {
+            // pipeline() 返回 Promise，必须 await，否则 instance 不是可 dispose 的对象
+            this.instance = await pipeline(this.task, this.model, {
                 dtype: {
                     encoder_model:
                         this.model === "onnx-community/whisper-large-v3-turbo"
                             ? "fp16"
                             : "fp32",
-                    decoder_model_merged: "q4", // or 'fp32' ('fp16' is broken)
+                    decoder_model_merged: "q4",
                 },
                 device: "webgpu",
                 progress_callback,
@@ -44,25 +39,58 @@ class PipelineFactory {
     }
 }
 
-self.addEventListener("message", async (event) => {
-    const message = event.data;
+class AutomaticSpeechRecognitionPipelineFactory extends PipelineFactory {
+    static task = "automatic-speech-recognition";
+    static model = null;
+}
 
-    // Do some work...
-    // TODO use message data
-    let transcript = await transcribe(message);
+async function disposeAutomaticSpeechRecognition() {
+    const p = AutomaticSpeechRecognitionPipelineFactory;
+    if (p.instance !== null) {
+        try {
+            await p.instance.dispose();
+        } catch (e) {
+            console.warn("ASR dispose:", e);
+        }
+        p.instance = null;
+    }
+}
+
+/** 将 worker 抛出的非 Error（如 ORT 数字码）转成可读 Error 再发到主线程 */
+function serializeWorkerError(e) {
+    if (e instanceof Error) return e;
+    if (typeof e === "number") {
+        return new Error(
+            `ONNX/WASM 内部错误 ${e}（常见：显存或内存不足；可换更小 Whisper、关闭其他标签页，或仅使用转写）`,
+        );
+    }
+    const s = String(e);
+    if (/^\d{5,}$/.test(s.trim())) {
+        return new Error(
+            `ONNX/WASM 内部错误 ${s.trim()}（常见：内存不足；可尝试更小识别模型或暂不翻译）`,
+        );
+    }
+    return new Error(s);
+}
+
+function normalizeChunks(chunks) {
+    if (!Array.isArray(chunks)) return [];
+    return chunks.map((c) => ({
+        text: c.text ?? "",
+        timestamp: [...(c.timestamp ?? [0, 0])],
+        finalised: c.finalised,
+    }));
+}
+
+self.addEventListener("message", async (event) => {
+    const transcript = await transcribe(event.data);
     if (transcript === null) return;
 
-    // Send the result back to the main thread
     self.postMessage({
         status: "complete",
         data: transcript,
     });
 });
-
-class AutomaticSpeechRecognitionPipelineFactory extends PipelineFactory {
-    static task = "automatic-speech-recognition";
-    static model = null;
-}
 
 const transcribe = async ({
     audio,
@@ -77,16 +105,14 @@ const transcribe = async ({
 
     const p = AutomaticSpeechRecognitionPipelineFactory;
     if (p.model !== model) {
-        // Invalidate model if different
         p.model = model;
 
         if (p.instance !== null) {
-            (await p.getInstance()).dispose();
+            await p.instance.dispose();
             p.instance = null;
         }
     }
 
-    // Load transcriber model
     const transcriber = await p.getInstance((data) => {
         self.postMessage(data);
     });
@@ -95,12 +121,7 @@ const transcribe = async ({
         transcriber.processor.feature_extractor.config.chunk_length /
         transcriber.model.config.max_source_positions;
 
-    // Storage for chunks to be processed. Initialise with an empty chunk.
-    /** @type {{ text: string; offset: number, timestamp: [number, number | null] }[]} */
     const chunks = [];
-
-    // TODO: Storage for fully-processed and merged chunks
-    // let decoded_chunks = [];
 
     const chunk_length_s = isDistilWhisper ? 20 : 30;
     const stride_length_s = isDistilWhisper ? 3 : 5;
@@ -120,7 +141,7 @@ const transcribe = async ({
                 offset,
             });
         },
-        token_callback_function: (x) => {
+        token_callback_function: () => {
             start_time ??= performance.now();
             if (num_tokens++ > 0) {
                 tps = (num_tokens / (performance.now() - start_time)) * 1000;
@@ -128,13 +149,12 @@ const transcribe = async ({
         },
         callback_function: (x) => {
             if (chunks.length === 0) return;
-            // Append text to the last chunk
             chunks.at(-1).text += x;
 
             self.postMessage({
                 status: "update",
                 data: {
-                    text: "", // No need to send full text yet
+                    text: "",
                     chunks,
                     tps,
                 },
@@ -152,37 +172,37 @@ const transcribe = async ({
         },
     });
 
-    // Actually run transcription
     const output = await transcriber(audio, {
-        // Greedy
         top_k: 0,
         do_sample: false,
-
-        // Sliding window
         chunk_length_s,
         stride_length_s,
-
-        // Language and task
         language,
         task: subtask,
-
-        // Return timestamps
         return_timestamps: true,
         force_full_sequences: false,
-
-        // Callback functions
-        streamer, // after each generation step
+        streamer,
     }).catch((error) => {
         console.error(error);
         self.postMessage({
             status: "error",
-            data: error,
+            data: serializeWorkerError(error),
         });
         return null;
     });
 
-    return {
+    if (output === null) return null;
+
+    const resultChunks = normalizeChunks(output.chunks ?? chunks);
+
+    const result = {
         tps,
         ...output,
+        chunks: resultChunks,
     };
+
+    await disposeAutomaticSpeechRecognition();
+    await new Promise((r) => setTimeout(r, 150));
+
+    return result;
 };
