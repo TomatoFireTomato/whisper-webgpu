@@ -1,4 +1,17 @@
-import { pipeline, WhisperTextStreamer } from "@huggingface/transformers";
+import { env, pipeline, WhisperTextStreamer } from "@huggingface/transformers";
+
+// ONNX Runtime WASM：使用本地 public/ort/（构建后为站点根目录 /ort/），不再从 jsdelivr 拉取
+// 请将文件放入 public/ort/，详见 public/ort/README.txt
+const ortWasmBase = new URL(
+    /* @vite-ignore */ "../ort/",
+    import.meta.url,
+).href;
+if (env.backends.onnx?.wasm) {
+    env.backends.onnx.wasm.wasmPaths = ortWasmBase;
+}
+
+const HF_OFFICIAL_HOST = "https://huggingface.co/";
+const HF_MIRROR_HOST = "https://hf-mirror.com/";
 
 // Define model factories
 // Ensures only one model is created of each type
@@ -51,7 +64,15 @@ class AutomaticSpeechRecognitionPipelineFactory extends PipelineFactory {
     static model = null;
 }
 
-const transcribe = async ({ audio, model, subtask, language }) => {
+const transcribe = async ({
+    audio,
+    model,
+    subtask,
+    language,
+    useHfMirror = false,
+}) => {
+    env.remoteHost = useHfMirror ? HF_MIRROR_HOST : HF_OFFICIAL_HOST;
+
     const isDistilWhisper = model.startsWith("distil-whisper/");
 
     const p = AutomaticSpeechRecognitionPipelineFactory;

@@ -123,13 +123,22 @@ export default function Transcript({ transcribedData }: Props) {
     return (
         <div
             ref={divRef}
-            className='w-full flex flex-col my-2 p-4 max-h-[20rem] overflow-y-auto'
+            className='flex max-h-[min(24rem,50vh)] w-full flex-col overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/50 p-3'
         >
+            {(!transcribedData?.chunks || transcribedData.chunks.length === 0) && (
+                <p className='py-10 text-center text-sm text-slate-400'>
+                    上传音频并开始转写后，带时间戳的文本会显示在这里
+                </p>
+            )}
             {transcribedData?.chunks &&
                 transcribedData.chunks.map((chunk, i) => (
                     <div
                         key={`${i}-${chunk.text}`}
-                        className={`w-full flex flex-row mb-2 ${transcribedData?.isBusy ? "bg-gray-100" : "bg-white"} rounded-lg p-4 shadow-xl shadow-black/5 ring-1 ring-slate-700/10`}
+                        className={`mb-2 flex w-full flex-row rounded-lg p-3 last:mb-0 ${
+                            transcribedData?.isBusy
+                                ? "bg-sky-50/80"
+                                : "bg-white ring-1 ring-slate-200/80"
+                        }`}
                     >
                         <div className='mr-5'>
                             {formatAudioTimestamp(chunk.timestamp[0])}

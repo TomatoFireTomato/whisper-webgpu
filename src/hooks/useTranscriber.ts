@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorker } from "./useWorker";
 import Constants from "../utils/Constants";
 
@@ -41,7 +41,11 @@ export interface Transcriber {
     setSubtask: (subtask: string) => void;
     language?: string;
     setLanguage: (language: string) => void;
+    useHfMirror: boolean;
+    setUseHfMirror: (value: boolean) => void;
 }
+
+const HF_MIRROR_STORAGE_KEY = "whisper-use-hf-mirror";
 
 export function useTranscriber(): Transcriber {
     const [transcript, setTranscript] = useState<TranscriberData | undefined>(
@@ -115,6 +119,24 @@ export function useTranscriber(): Transcriber {
     const [language, setLanguage] = useState<string>(
         Constants.DEFAULT_LANGUAGE,
     );
+    const [useHfMirror, setUseHfMirror] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(HF_MIRROR_STORAGE_KEY) === "true";
+        } catch {
+            return false;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(
+                HF_MIRROR_STORAGE_KEY,
+                useHfMirror ? "true" : "false",
+            );
+        } catch {
+            /* ignore */
+        }
+    }, [useHfMirror]);
 
     const onInputChange = useCallback(() => {
         setTranscript(undefined);
@@ -149,10 +171,11 @@ export function useTranscriber(): Transcriber {
                     subtask: multilingual ? subtask : null,
                     language:
                         multilingual && language !== "auto" ? language : null,
+                    useHfMirror,
                 });
             }
         },
-        [webWorker, model, multilingual, subtask, language],
+        [webWorker, model, multilingual, subtask, language, useHfMirror],
     );
 
     const transcriber = useMemo(() => {
@@ -171,6 +194,8 @@ export function useTranscriber(): Transcriber {
             setSubtask,
             language,
             setLanguage,
+            useHfMirror,
+            setUseHfMirror,
         };
     }, [
         isBusy,
@@ -182,6 +207,7 @@ export function useTranscriber(): Transcriber {
         multilingual,
         subtask,
         language,
+        useHfMirror,
     ]);
 
     return transcriber;

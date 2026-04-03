@@ -14,14 +14,14 @@ export function TranscribeButton(props: Props): JSX.Element {
                 }
             }}
             disabled={isTranscribing}
-            className='text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center mr-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800 inline-flex items-center'
+            className='inline-flex items-center rounded-xl bg-gradient-to-r from-sky-600 to-cyan-600 px-8 py-3 text-center text-sm font-semibold text-white shadow-md shadow-sky-500/25 transition hover:from-sky-500 hover:to-cyan-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 disabled:opacity-70'
         >
             {isModelLoading ? (
-                <Spinner text={"Loading model..."} />
+                <Spinner text='加载模型中…' />
             ) : isTranscribing ? (
-                <Spinner text={"Transcribing..."} />
+                <Spinner text='转写中…' />
             ) : (
-                "Transcribe Audio"
+                "开始转写"
             )}
         </button>
     );
