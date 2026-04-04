@@ -13,7 +13,12 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["sidePanel", "scripting", "activeTab"],
+  "permissions": [
+    "sidePanel",
+    "scripting",
+    "activeTab",
+    "unlimitedStorage"
+  ],
   "host_permissions": [
     "https://huggingface.co/*",
     "https://hf-mirror.com/*",

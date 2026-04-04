@@ -25,27 +25,48 @@ interface ProgressItem {
     status: string;
 }
 
+export type TranscriptChunk = {
+    text: string;
+    originalText?: string;
+    timestamp: [number, number | null];
+    translation?: string;
+    correctionNote?: string;
+};
+
 interface TranscriberUpdateData {
     data: {
         text: string;
-        chunks: {
-            text: string;
-            timestamp: [number, number | null];
-            translation?: string;
-        }[];
-        tps: number;
+        language?: string | null;
+        chunks: TranscriptChunk[];
+        tps?: number;
+        transcriptionProgress?: number;
+        correctionProgress?: number;
+        correctionSummary?: string[];
+        hasQwenCorrection?: boolean;
+        hasQwenTranslation?: boolean;
+        translationProgress?: number;
     };
 }
 
 export interface TranscriberData {
+    title: string;
+    currentHistoryId?: string | null;
     isBusy: boolean;
+    isCorrecting: boolean;
+    isTranslating: boolean;
+    isFinalizing: boolean;
     tps?: number;
     text: string;
-    chunks: {
-        text: string;
-        timestamp: [number, number | null];
-        translation?: string;
-    }[];
+    language?: string | null;
+    chunks: TranscriptChunk[];
+    qwenText: string;
+    qwenChunks: TranscriptChunk[];
+    correctionSummary: string[];
+    hasQwenCorrection: boolean;
+    hasQwenTranslation: boolean;
+    transcriptionProgress: number;
+    correctionProgress: number;
+    translationProgress: number;
 }
 
 export interface Transcriber {
@@ -57,6 +78,7 @@ export interface Transcriber {
         audioData: AudioBuffer | undefined,
         meta?: { fileName?: string },
     ) => void;
+    processCurrentTranscriptWithQwen: () => void;
     output?: TranscriberData;
     model: string;
     setModel: (model: string) => void;
@@ -66,10 +88,8 @@ export interface Transcriber {
     setLanguage: (language: string) => void;
     useHfMirror: boolean;
     setUseHfMirror: (value: boolean) => void;
-    /** B 站字幕翻译后端 */
     subtitleTranslateService: TranslationServiceId;
     setSubtitleTranslateService: (id: TranslationServiceId) => void;
-    /** 本地缓存的转录历史（新→旧） */
     transcriptHistory: TranscriptHistoryItem[];
     loadTranscriptFromHistory: (id: string) => void;
     removeTranscriptHistoryItem: (id: string) => void;
@@ -85,20 +105,73 @@ function formatWorkerError(data: unknown): string {
         return m || data.name || "Error";
     }
     if (typeof data === "number") {
-        return `底层运行错误（代码 ${data}）。常见于 ONNX/WebGPU 显存或内存不足，可尝试更小 Whisper 模型、关闭占用 GPU 的页面，或仅使用转写。`;
+        return `底层运行错误（代码 ${data}）。常见于 ONNX/WebGPU 显存或内存不足，可尝试更小模型、关闭占用 GPU 的页面后重试。`;
     }
     if (data && typeof data === "object") {
         const o = data as { message?: unknown };
         if (typeof o.message === "string" && o.message.trim()) return o.message;
     }
-    const s = String(data).trim();
-    if (/^\d{5,}$/.test(s)) {
-        return `底层运行错误（代码 ${s}）。常见于 WASM/内存不足：可换更小 Whisper、关闭其他标签页，或仅转写。`;
+    return String(data).trim() || "未知错误";
+}
+
+function toTranscriptData(
+    data: Partial<TranscriberData> & {
+        text: string;
+        chunks: TranscriptChunk[];
+    },
+): TranscriberData {
+    return {
+        isBusy: data.isBusy ?? false,
+        title: data.title ?? "当前结果",
+        currentHistoryId: data.currentHistoryId ?? null,
+        isCorrecting: data.isCorrecting ?? false,
+        isTranslating: data.isTranslating ?? false,
+        isFinalizing: data.isFinalizing ?? false,
+        tps: data.tps,
+        text: data.text,
+        language: data.language ?? null,
+        chunks: data.chunks,
+        qwenText: data.qwenText ?? "",
+        qwenChunks: data.qwenChunks ?? [],
+        correctionSummary: data.correctionSummary ?? [],
+        hasQwenCorrection: data.hasQwenCorrection ?? false,
+        hasQwenTranslation: data.hasQwenTranslation ?? false,
+        transcriptionProgress: data.transcriptionProgress ?? 0,
+        correctionProgress: data.correctionProgress ?? 0,
+        translationProgress: data.translationProgress ?? 0,
+    };
+}
+
+function mapHistoryToTranscript(item: TranscriptHistoryItem): TranscriberData {
+    return toTranscriptData({
+        title: item.fileName,
+        currentHistoryId: item.id,
+        text: item.text,
+        tps: item.tps,
+        language: item.language,
+        chunks: item.chunks,
+        qwenText: item.qwenText ?? "",
+        qwenChunks: item.qwenChunks ?? [],
+        correctionSummary: item.correctionSummary ?? [],
+        hasQwenCorrection: item.hasQwenCorrection ?? false,
+        hasQwenTranslation: item.hasQwenTranslation ?? false,
+        transcriptionProgress: item.transcriptionProgress ?? 100,
+        correctionProgress: item.correctionProgress ?? 0,
+        translationProgress: item.translationProgress ?? 0,
+    });
+}
+
+function persistCurrentHistoryItem(
+    updater: (items: TranscriptHistoryItem[]) => TranscriptHistoryItem[],
+) {
+    try {
+        localStorage.setItem(
+            "whisper-webgpu-transcript-history-v1",
+            JSON.stringify(updater(loadTranscriptHistory())),
+        );
+    } catch {
+        /* ignore */
     }
-    if (s.includes("Aborted")) {
-        return "ONNX Runtime 已中止（Aborted），多与内存或 GPU 资源不足有关。可尝试更小 Whisper、关闭其他标签页。";
-    }
-    return s || "未知错误";
 }
 
 export function useTranscriber(): Transcriber {
@@ -107,82 +180,143 @@ export function useTranscriber(): Transcriber {
     const [transcriptHistory, setTranscriptHistory] = useState<
         TranscriptHistoryItem[]
     >(() => loadTranscriptHistory());
-
     const [transcript, setTranscript] = useState<TranscriberData | undefined>(
         () => {
-            const h = loadTranscriptHistory();
-            const first = h[0];
-            if (!first) return undefined;
-            return {
-                isBusy: false,
-                text: first.text,
-                tps: first.tps,
-                chunks: first.chunks,
-            };
+            const first = loadTranscriptHistory()[0];
+            return first ? mapHistoryToTranscript(first) : undefined;
         },
     );
+    const transcriptRef = useRef<TranscriberData | undefined>(transcript);
+    useEffect(() => {
+        transcriptRef.current = transcript;
+    }, [transcript]);
+
     const [isBusy, setIsBusy] = useState(false);
     const [isModelLoading, setIsModelLoading] = useState(false);
-
     const [progressItems, setProgressItems] = useState<ProgressItem[]>([]);
-
-    const useHfMirrorRef = useRef(
-        typeof localStorage !== "undefined" &&
-            localStorage.getItem(HF_MIRROR_STORAGE_KEY) === "true",
-    );
 
     const webWorker = useWorker((event) => {
         const message = event.data;
         switch (message.status) {
             case "progress":
                 setProgressItems((prev) =>
-                    prev.map((item) => {
-                        if (item.file === message.file) {
-                            return { ...item, progress: message.progress };
-                        }
-                        return item;
-                    }),
+                    prev.map((item) =>
+                        item.file === message.file
+                            ? { ...item, progress: message.progress }
+                            : item,
+                    ),
                 );
                 break;
             case "update":
             case "complete": {
+                const d = (message as TranscriberUpdateData).data;
                 const busy = message.status === "update";
-                const updateMessage = message as TranscriberUpdateData;
-                const d = updateMessage.data;
-                setTranscript({
+                const next = toTranscriptData({
+                    title: pendingFileNameRef.current,
+                    currentHistoryId: null,
                     isBusy: busy,
+                    isCorrecting: false,
+                    isTranslating: false,
+                    isFinalizing:
+                        busy && (d.transcriptionProgress ?? 0) >= 99,
                     text: d.text,
                     tps: d.tps,
+                    language: d.language,
                     chunks: d.chunks,
+                    transcriptionProgress: d.transcriptionProgress ?? 0,
+                    correctionProgress: 0,
+                    translationProgress: 0,
+                    qwenText: "",
+                    qwenChunks: [],
+                    correctionSummary: [],
+                    hasQwenCorrection: false,
+                    hasQwenTranslation: false,
                 });
+                setTranscript(next);
                 setIsBusy(busy);
 
                 if (message.status === "complete") {
-                    setIsBusy(false);
-                    const rawChunks = d.chunks ?? [];
-                    appendTranscriptHistory({
+                    const saved = appendTranscriptHistory({
                         fileName: pendingFileNameRef.current,
-                        text: d.text ?? "",
-                        tps: d.tps,
-                        chunks: rawChunks.map((c) => ({
-                            text: c.text ?? "",
-                            timestamp: [
-                                Number(c.timestamp?.[0] ?? 0),
-                                c.timestamp?.[1] != null
-                                    ? Number(c.timestamp[1])
-                                    : null,
-                            ] as [number, number | null],
-                            translation:
-                                typeof c.translation === "string"
-                                    ? c.translation
-                                    : undefined,
-                        })),
+                        text: next.text,
+                        tps: next.tps,
+                        language: next.language,
+                        chunks: next.chunks,
+                        qwenText: "",
+                        qwenChunks: [],
+                        correctionSummary: [],
+                        hasQwenCorrection: false,
+                        hasQwenTranslation: false,
+                        transcriptionProgress: next.transcriptionProgress,
+                        correctionProgress: 0,
+                        translationProgress: 0,
+                    });
+                    setTranscript((prev) =>
+                        prev
+                            ? {
+                                  ...prev,
+                                  title: saved.fileName,
+                                  currentHistoryId: saved.id,
+                              }
+                            : prev,
+                    );
+                    setTranscriptHistory(loadTranscriptHistory());
+                }
+                break;
+            }
+            case "qwen_update":
+            case "qwen_complete": {
+                const d = (message as TranscriberUpdateData).data;
+                const done = message.status === "qwen_complete";
+                setIsBusy(!done);
+                setTranscript((prev) =>
+                    prev
+                        ? toTranscriptData({
+                              ...prev,
+                              title: prev.title,
+                              currentHistoryId: prev.currentHistoryId,
+                              isBusy: false,
+                              isCorrecting: !done,
+                              isTranslating: !done,
+                              isFinalizing: false,
+                              qwenText: d.text,
+                              qwenChunks: d.chunks,
+                              correctionSummary: d.correctionSummary ?? [],
+                              hasQwenCorrection:
+                                  d.hasQwenCorrection ?? true,
+                              hasQwenTranslation:
+                                  d.hasQwenTranslation ?? false,
+                              correctionProgress:
+                                  d.correctionProgress ?? (done ? 100 : 0),
+                              translationProgress:
+                                  d.translationProgress ?? (done ? 100 : 0),
+                          })
+                        : prev,
+                );
+
+                if (done) {
+                    persistCurrentHistoryItem((items) => {
+                        if (!items[0]) return items;
+                        items[0] = {
+                            ...items[0],
+                            qwenText: d.text,
+                            qwenChunks: d.chunks,
+                            correctionSummary: d.correctionSummary ?? [],
+                            hasQwenCorrection:
+                                d.hasQwenCorrection ?? true,
+                            hasQwenTranslation:
+                                d.hasQwenTranslation ?? true,
+                            correctionProgress:
+                                d.correctionProgress ?? 100,
+                            translationProgress:
+                                d.translationProgress ?? 100,
+                        };
+                        return items;
                     });
                     setTranscriptHistory(loadTranscriptHistory());
                 }
                 break;
             }
-
             case "initiate":
                 setIsModelLoading(true);
                 setProgressItems((prev) => [...prev, message]);
@@ -192,6 +326,17 @@ export function useTranscriber(): Transcriber {
                 break;
             case "error":
                 setIsBusy(false);
+                setTranscript((prev) =>
+                    prev
+                        ? {
+                              ...prev,
+                              isBusy: false,
+                              isCorrecting: false,
+                              isTranslating: false,
+                              isFinalizing: false,
+                          }
+                        : prev,
+                );
                 setIsModelLoading(false);
                 alert(`发生错误: ${formatWorkerError(message.data)}`);
                 break;
@@ -200,7 +345,6 @@ export function useTranscriber(): Transcriber {
                     prev.filter((item) => item.file !== message.file),
                 );
                 break;
-
             default:
                 break;
         }
@@ -225,7 +369,6 @@ export function useTranscriber(): Transcriber {
             return false;
         }
     });
-
     const [subtitleTranslateService, setSubtitleTranslateService] =
         useState<TranslationServiceId>(() => {
             try {
@@ -236,10 +379,6 @@ export function useTranscriber(): Transcriber {
             }
             return DEFAULT_TRANSLATION_SERVICE;
         });
-
-    useEffect(() => {
-        useHfMirrorRef.current = useHfMirror;
-    }, [useHfMirror]);
 
     useEffect(() => {
         try {
@@ -274,29 +413,14 @@ export function useTranscriber(): Transcriber {
     const loadTranscriptFromHistory = useCallback((id: string) => {
         const item = loadTranscriptHistory().find((x) => x.id === id);
         if (!item) return;
-        setTranscript({
-            isBusy: false,
-            text: item.text,
-            tps: item.tps,
-            chunks: item.chunks,
-        });
+        setTranscript(mapHistoryToTranscript(item));
     }, []);
 
     const removeTranscriptHistoryItem = useCallback((id: string) => {
         removeTranscriptHistoryItemStorage(id);
-        const h = loadTranscriptHistory();
-        setTranscriptHistory(h);
-        const first = h[0];
-        setTranscript(
-            first
-                ? {
-                      isBusy: false,
-                      text: first.text,
-                      tps: first.tps,
-                      chunks: first.chunks,
-                  }
-                : undefined,
-        );
+        const history = loadTranscriptHistory();
+        setTranscriptHistory(history);
+        setTranscript(history[0] ? mapHistoryToTranscript(history[0]) : undefined);
     }, []);
 
     const clearTranscriptHistory = useCallback(() => {
@@ -309,53 +433,79 @@ export function useTranscriber(): Transcriber {
         setTranscript(undefined);
     }, []);
 
-    const postRequest = useCallback(
-        async (
-            audioData: AudioBuffer | undefined,
-            meta?: { fileName?: string },
-        ) => {
-            if (audioData) {
-                pendingFileNameRef.current =
-                    meta?.fileName?.trim() || "未命名音频";
-                setTranscript(undefined);
-                setIsBusy(true);
+    const start = useCallback(
+        (audioData: AudioBuffer | undefined, meta?: { fileName?: string }) => {
+            if (!audioData) return;
 
-                let audio;
-                if (audioData.numberOfChannels === 2) {
-                    const SCALING_FACTOR = Math.sqrt(2);
+            pendingFileNameRef.current = meta?.fileName?.trim() || "未命名音频";
+            setTranscript(undefined);
+            setIsBusy(true);
 
-                    const left = audioData.getChannelData(0);
-                    const right = audioData.getChannelData(1);
-
-                    audio = new Float32Array(left.length);
-                    for (let i = 0; i < audioData.length; ++i) {
-                        audio[i] = (SCALING_FACTOR * (left[i] + right[i])) / 2;
-                    }
-                } else {
-                    audio = audioData.getChannelData(0);
+            let audio;
+            if (audioData.numberOfChannels === 2) {
+                const left = audioData.getChannelData(0);
+                const right = audioData.getChannelData(1);
+                const SCALING_FACTOR = Math.sqrt(2);
+                audio = new Float32Array(left.length);
+                for (let i = 0; i < audioData.length; ++i) {
+                    audio[i] = (SCALING_FACTOR * (left[i] + right[i])) / 2;
                 }
-
-                webWorker.postMessage({
-                    audio,
-                    model,
-                    multilingual,
-                    subtask: multilingual ? Constants.DEFAULT_SUBTASK : null,
-                    language:
-                        multilingual && language !== "auto" ? language : null,
-                    useHfMirror,
-                });
+            } else {
+                audio = audioData.getChannelData(0);
             }
+
+            webWorker.postMessage({
+                action: "transcribe",
+                audio,
+                audioDuration: audioData.duration,
+                model,
+                multilingual,
+                subtask: multilingual ? Constants.DEFAULT_SUBTASK : null,
+                language: multilingual && language !== "auto" ? language : null,
+                useHfMirror,
+            });
         },
         [webWorker, model, multilingual, language, useHfMirror],
     );
 
-    const transcriber = useMemo(() => {
-        return {
+    const processCurrentTranscriptWithQwen = useCallback(() => {
+        const current = transcriptRef.current;
+        if (!current || current.chunks.length === 0) return;
+        setIsBusy(true);
+        setTranscript((prev) =>
+            prev
+                ? {
+                      ...prev,
+                      isCorrecting: true,
+                      isTranslating: false,
+                      isFinalizing: false,
+                      correctionProgress: 0,
+                      translationProgress: 0,
+                      qwenText: "",
+                      qwenChunks: [],
+                      correctionSummary: [],
+                      hasQwenCorrection: false,
+                      hasQwenTranslation: false,
+                  }
+                : prev,
+        );
+        webWorker.postMessage({
+            action: "process",
+            language: current.language ?? language ?? "auto",
+            text: current.text,
+            tps: current.tps,
+            chunks: current.chunks,
+        });
+    }, [webWorker, language]);
+
+    return useMemo(
+        () => ({
             onInputChange,
             isBusy,
             isModelLoading,
             progressItems,
-            start: postRequest,
+            start,
+            processCurrentTranscriptWithQwen,
             output: transcript,
             model,
             setModel,
@@ -371,23 +521,24 @@ export function useTranscriber(): Transcriber {
             loadTranscriptFromHistory,
             removeTranscriptHistoryItem,
             clearTranscriptHistory,
-        };
-    }, [
-        isBusy,
-        isModelLoading,
-        progressItems,
-        postRequest,
-        transcript,
-        model,
-        multilingual,
-        language,
-        useHfMirror,
-        subtitleTranslateService,
-        transcriptHistory,
-        loadTranscriptFromHistory,
-        removeTranscriptHistoryItem,
-        clearTranscriptHistory,
-    ]);
-
-    return transcriber;
+        }),
+        [
+            onInputChange,
+            isBusy,
+            isModelLoading,
+            progressItems,
+            start,
+            processCurrentTranscriptWithQwen,
+            transcript,
+            model,
+            multilingual,
+            language,
+            useHfMirror,
+            subtitleTranslateService,
+            transcriptHistory,
+            loadTranscriptFromHistory,
+            removeTranscriptHistoryItem,
+            clearTranscriptHistory,
+        ],
+    );
 }

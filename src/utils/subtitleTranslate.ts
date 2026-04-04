@@ -6,6 +6,7 @@
 import type { BilibiliOverlayCue, SubtitleCue } from "./subtitleCues";
 
 export const TRANSLATION_SERVICE_IDS = [
+    "qwen-local",
     "google-gtx",
     "bing",
     "lingva",
@@ -194,6 +195,8 @@ async function translateOne(
     service: TranslationServiceId,
 ): Promise<string> {
     switch (service) {
+        case "qwen-local":
+            return text;
         case "google-gtx":
             return translateGoogleGtx(text, sl, tl);
         case "bing":

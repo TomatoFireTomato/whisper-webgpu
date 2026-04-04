@@ -18,6 +18,15 @@ export function CobaltPageAudio() {
                 >
                     Cobalt
                 </a>
+                {" "}或{" "}
+                <a
+                    className='font-medium text-violet-700 underline decoration-violet-300 underline-offset-2 hover:text-violet-900'
+                    href='https://lemondl.com/'
+                    target='_blank'
+                    rel='noreferrer'
+                >
+                    Lemondl
+                </a>
                 ，粘贴视频页链接并选择仅下载音频；下载完成后回到此处，用上方「点击或拖拽」上传该音频文件即可转写。使用第三方服务时请遵守其条款与版权规定。
             </p>
         </div>

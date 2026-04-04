@@ -11,7 +11,7 @@
 
 2. **安装扩展**（任选一种）：
    - **开发者模式加载**：解压构建产物中的 `dist` 文件夹 → 打开 `chrome://extensions` → 打开「开发者模式」→ **加载已解压的扩展程序** → 选择该 `dist` 目录。  
-   - **从 GitHub 下载构建包**：仓库 **Actions** → 最新成功的 **Build** → 底部 **Artifacts** → 下载 **`sidebar-whisper-dist`**，解压后同上加载其中的 `dist`。
+   - **从 GitHub 下载构建包**：仓库 **Releases** 下载 **`sidebar-whisper-dist.zip`**，解压后同上加载其中的 `dist`；也可以在 **Actions** → 最新成功的 **Build** → 底部 **Artifacts** 下载构建产物。
 
 3. **打开方式**：点击浏览器工具栏上的扩展图标，会在**侧边栏**打开 Sidebar Whisper（无需新开标签页）。
 
@@ -73,5 +73,116 @@ npm run dev          # 开发调试
 npm run build        # 生成 dist，用于加载扩展
 ```
 
-- **GitHub Actions**：推送到 `main` 会执行构建，并上传 **`sidebar-whisper-dist`** 供下载；同时可在仓库开启 **GitHub Pages**（Source：GitHub Actions）用于在线预览构建结果。  
+- **GitHub Actions**：
+  - 推送到 `main` 会执行构建，并上传 **`sidebar-whisper-dist`** 与 **`sidebar-whisper-dist.zip`**；
+  - 推送标签（如 `v1.0.0`）会自动创建 GitHub Release，并附带 **`sidebar-whisper-dist.zip`**；
+  - `main` 分支推送/手动运行时同时部署 GitHub Pages，用于在线预览构建结果。
 - 技术栈：基于 [Transformers.js](https://github.com/xenova/transformers.js) 与 Whisper 模型在浏览器中推理。
+
+## 八、扩展 ID 与发布建议
+
+### 1. 固定扩展 ID
+
+为了让用户在**更新插件后尽量复用模型缓存**，必须长期保持**同一个扩展 ID**。
+
+本仓库已支持通过构建环境变量 `EXTENSION_PUBLIC_KEY` 注入 `manifest.json` 中的 `key` 字段：
+
+1. 在 Chrome Web Store Developer Dashboard 创建扩展条目；  
+2. 获取该扩展的 **public key**；  
+3. 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中新增 secret：`EXTENSION_PUBLIC_KEY`；  
+4. GitHub Actions 构建时会自动把该公钥写入 `manifest.json`，从而固定扩展 ID。  
+
+如果本地手动构建，也可以先在 shell 中导出：
+
+```bash
+export EXTENSION_PUBLIC_KEY='你的扩展公钥'
+npm run build
+```
+
+### 2. 推荐发布方式
+
+最适合长期给别人使用的方式是：
+
+1. **正式版**：发布到 **Chrome Web Store**  
+   - 用户自动更新；
+   - 扩展 ID 稳定；
+   - 更新后更有机会继续使用已缓存的模型文件。
+
+2. **预览版 / 测试版**：使用 **GitHub Release**  
+   - 给测试用户下载 `sidebar-whisper-dist.zip`；
+   - 适合快速验证新功能；
+   - 不建议把“手动下载并覆盖安装”作为长期正式更新方式。
+
+### 3. 建议的发布流程
+
+日常开发：
+
+```bash
+git push origin main
+```
+
+发布测试包：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+之后 GitHub Actions 会自动：
+
+1. 构建扩展；
+2. 打包 `sidebar-whisper-dist.zip`；
+3. 创建对应的 GitHub Release；
+4. 把 zip 附件挂到 Release 页面；
+5. 如果已配置 Chrome Web Store 发布凭据，则自动上传并发布到商店。
+
+正式发布时：
+
+1. 打 tag 并推送；
+2. GitHub Actions 自动构建 Release；
+3. 若已配置商店发布凭据，则自动上传到 Chrome Web Store 的同一个扩展条目并发布更新。
+
+这样做可以同时兼顾：
+
+- GitHub 上方便下载测试版；
+- Chrome Web Store 上稳定更新正式版；
+- 扩展 ID 保持不变，模型缓存更容易沿用。
+
+### 4. 一键发包到 Chrome Web Store
+
+本仓库已经接入了自动发布工作流：推送 `v*` tag 时，除了生成 GitHub Release，还会在配置完整时自动上传并发布到 Chrome Web Store。
+
+你需要在 GitHub 仓库里配置以下内容：
+
+#### GitHub Secrets
+
+- `EXTENSION_PUBLIC_KEY`
+  - 你的 Chrome 扩展 public key，用来固定扩展 ID。
+
+- `CWS_SERVICE_ACCOUNT_JSON`
+  - 具有 Chrome Web Store API 权限的 Google Cloud service account JSON。
+
+#### GitHub Repository Variables
+
+- `CWS_EXTENSION_ID`
+  - 你的 Chrome 扩展 ID。
+
+- `CWS_PUBLISHER_ID`
+  - 你的 Chrome Web Store publisher ID。
+
+#### 发布命令
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+工作流会自动执行：
+
+1. 构建扩展；
+2. 生成 `sidebar-whisper-dist.zip`；
+3. 创建 GitHub Release；
+4. 上传 zip 附件；
+5. 调用 Chrome Web Store API 上传并发布该版本。
+
+如果没有配置 `CWS_SERVICE_ACCOUNT_JSON`、`CWS_EXTENSION_ID` 或 `CWS_PUBLISHER_ID`，工作流会只生成 GitHub Release，不会尝试商店发布。

@@ -40,10 +40,27 @@ export type TranscriptHistoryItem = {
     fileName: string;
     text: string;
     tps?: number;
+    language?: string | null;
+    qwenText?: string;
+    correctionSummary?: string[];
+    hasQwenCorrection?: boolean;
+    hasQwenTranslation?: boolean;
+    transcriptionProgress?: number;
+    correctionProgress?: number;
+    translationProgress?: number;
     chunks: {
         text: string;
+        originalText?: string;
         timestamp: [number, number | null];
         translation?: string;
+        correctionNote?: string;
+    }[];
+    qwenChunks?: {
+        text: string;
+        originalText?: string;
+        timestamp: [number, number | null];
+        translation?: string;
+        correctionNote?: string;
     }[];
 };
 
@@ -103,7 +120,16 @@ export function appendTranscriptHistory(
         fileName: entry.fileName || "未命名",
         text: entry.text,
         tps: entry.tps,
+        language: entry.language,
+        qwenText: entry.qwenText ?? "",
+        correctionSummary: entry.correctionSummary ?? [],
+        hasQwenCorrection: entry.hasQwenCorrection ?? false,
+        hasQwenTranslation: entry.hasQwenTranslation ?? false,
+        transcriptionProgress: entry.transcriptionProgress ?? 0,
+        correctionProgress: entry.correctionProgress ?? 0,
+        translationProgress: entry.translationProgress ?? 0,
         chunks: entry.chunks,
+        qwenChunks: entry.qwenChunks ?? [],
     };
     const prev = loadTranscriptHistory();
     const next = trimHistoryIfNeeded([item, ...prev]);

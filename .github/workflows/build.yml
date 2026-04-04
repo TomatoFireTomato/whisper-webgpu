@@ -1,4 +1,4 @@
-# 构建 dist → 上传可下载 Artifacts；在 main 上推送/手动运行时同时部署 GitHub Pages
+# 构建扩展 → 上传 dist 与 zip；在 main 上推送/手动运行时同时部署 GitHub Pages
 name: Build
 
 on:
@@ -34,13 +34,26 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          EXTENSION_PUBLIC_KEY: ${{ secrets.EXTENSION_PUBLIC_KEY }}
         run: npm run build
+
+      - name: Pack extension zip
+        run: cd dist && zip -r ../sidebar-whisper-dist.zip .
 
       - name: Upload dist artifact (download zip)
         uses: actions/upload-artifact@v4
         with:
           name: sidebar-whisper-dist
           path: dist/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload extension zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidebar-whisper-dist-zip
+          path: sidebar-whisper-dist.zip
           if-no-files-found: error
           retention-days: 90
 

@@ -1,12 +1,14 @@
 interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     isModelLoading: boolean;
     isTranscribing: boolean;
+    isFinalizing?: boolean;
 }
 
 export function TranscribeButton(props: Props): JSX.Element {
     const {
         isModelLoading,
         isTranscribing,
+        isFinalizing,
         onClick,
         ...buttonProps
     } = props;
@@ -28,7 +30,7 @@ export function TranscribeButton(props: Props): JSX.Element {
             {isModelLoading ? (
                 <Spinner text='加载模型中…' />
             ) : isTranscribing ? (
-                <Spinner text='转写中…' />
+                <Spinner text={isFinalizing ? "正在收尾…" : "处理中…"} />
             ) : (
                 "开始转写"
             )}

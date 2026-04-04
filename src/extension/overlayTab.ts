@@ -1,12 +1,7 @@
-import {
-    applyBilibiliSubtitleCuesUpdate,
-    injectBilibiliSubtitleOverlay,
-} from "./bilibiliOverlay";
 import type { SubtitleCue } from "../utils/subtitleCues";
 import {
     buildBilibiliOverlayCues,
     DEFAULT_TRANSLATION_SERVICE,
-    fillBilibiliOverlayTranslations,
     type TranslationServiceId,
 } from "../utils/subtitleTranslate";
 
@@ -23,8 +18,31 @@ export type SendSubtitlesOptions = {
     translationService?: TranslationServiceId;
 };
 
+type OverlayRuntimePayload = {
+    cues: ReturnType<typeof buildBilibiliOverlayCues>;
+    sourceLang: string;
+    targetLang: string;
+    translationService: TranslationServiceId;
+    lookAheadCount: number;
+    prefetchSeconds: number;
+};
+
+function bootPageSubtitleRuntime(payload: OverlayRuntimePayload): void {
+    const globalKey = "__whisperWebgpuSubtitleRuntime";
+    const runtime = (
+        window as unknown as {
+            [key: string]:
+                | {
+                      upsert: (data: OverlayRuntimePayload) => void;
+                  }
+                | undefined;
+        }
+    )[globalKey];
+    runtime?.upsert(payload);
+}
+
 /**
- * 先向当前页注入叠加层（立即显示原文），再在扩展侧分批翻译并通过 MAIN world 静默更新译文。
+ * 将字轨与翻译配置注入页面运行时，由页面侧按播放进度渐进翻译并持续显示。
  */
 export async function sendSubtitlesToActiveTab(
     cues: SubtitleCue[],
@@ -46,11 +64,18 @@ export async function sendSubtitlesToActiveTab(
     const translationService =
         options.translationService ?? DEFAULT_TRANSLATION_SERVICE;
 
-    const base = buildBilibiliOverlayCues(cues);
-    const translateOpts = {
+    const base = buildBilibiliOverlayCues(cues).map((cue) => ({
+        ...cue,
+        translation:
+            translationService === "qwen-local" ? cue.translation : "",
+    }));
+    const payload: OverlayRuntimePayload = {
+        cues: base,
         sourceLang,
         targetLang,
-        service: translationService,
+        translationService,
+        lookAheadCount: 6,
+        prefetchSeconds: 45,
     };
 
     return new Promise((resolve) => {
@@ -74,31 +99,20 @@ export async function sendSubtitlesToActiveTab(
             chrome.scripting
                 .executeScript({
                     target: { tabId },
-                    world: "MAIN",
-                    func: injectBilibiliSubtitleOverlay,
-                    args: [base],
+                    files: ["page-subtitle-runtime.js"],
                 })
                 .then(async () => {
                     try {
-                        await fillBilibiliOverlayTranslations(
-                            base,
-                            cues,
-                            translateOpts,
-                            4,
-                            async (merged) => {
-                                await chrome.scripting.executeScript({
-                                    target: { tabId },
-                                    world: "MAIN",
-                                    func: applyBilibiliSubtitleCuesUpdate,
-                                    args: [merged],
-                                });
-                            },
-                        );
+                        await chrome.scripting.executeScript({
+                            target: { tabId },
+                            func: bootPageSubtitleRuntime,
+                            args: [payload],
+                        });
                         resolve({ ok: true });
                     } catch {
                         resolve({
                             ok: false,
-                            error: "字幕翻译失败（网络或服务不可用）。请稍后重试。",
+                            error: "页面字幕运行时初始化失败，请刷新视频页后重试。",
                         });
                     }
                 })

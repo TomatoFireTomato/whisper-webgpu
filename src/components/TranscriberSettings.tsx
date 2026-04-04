@@ -195,10 +195,30 @@ export function TranscriberSettings(props: { transcriber: Transcriber }) {
 
                 <div className='rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5'>
                     <p className='text-sm font-medium text-slate-700'>
+                        Qwen 处理
+                    </p>
+                    <p className='mt-0.5 text-xs text-slate-500'>
+                        转写完成后会先保留原始字幕文件。你可以在结果区手动点击
+                        「Qwen 处理」，依次完成修正和翻译，生成单独的 Qwen 处理稿；不处理也可以直接导出原始字幕。
+                    </p>
+                </div>
+
+                <div className='rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2.5'>
+                    <p className='text-sm font-medium text-amber-900'>
+                        推荐方案
+                    </p>
+                    <p className='mt-0.5 text-xs text-amber-800'>
+                        如果你更在意最终字幕质量，最合适的流程通常是：先导出原始转写字幕，再交给更强的大模型做优化和翻译，最后通过「手动导入字幕」回到页面播放。
+                    </p>
+                </div>
+
+                <div className='rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5'>
+                    <p className='text-sm font-medium text-slate-700'>
                         B 站双语字幕
                     </p>
                     <p className='mt-0.5 text-xs text-slate-500'>
-                        在 B 站视频页点「发送字幕到当前页」时，扩展会先用所选服务批量翻译，再在播放器上叠加显示（与沉浸式「先整轨翻译、再按时间轴显示」一致）。多语言模式下「源语言」用于翻译方向；关闭多语言时按英文转写源文译成中文。
+                        发送字幕时可以选择原始转写稿、Qwen 处理稿，或手动导入的字幕文件。
+                        如果发送的文件里还没有现成译文，页面会继续使用下方在线服务边播放边翻译。
                     </p>
                     <label
                         className={`${labelClass} mt-3 block`}

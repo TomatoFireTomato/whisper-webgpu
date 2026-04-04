@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "prepare:manifest": "node scripts/prepare-manifest.mjs",
+    "build": "npm run prepare:manifest && tsc -b && vite build",
     "build:chrome": "npm run build",
     "clean": "rm -rf node_modules/ dist/",
     "lint": "eslint .",

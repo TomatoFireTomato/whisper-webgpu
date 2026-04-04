@@ -1,4 +1,5 @@
 import { AudioManager } from "./components/AudioManager";
+import { ImportedSubtitlesPanel } from "./components/ImportedSubtitlesPanel";
 import Transcript from "./components/Transcript";
 import { TranscriberSettings } from "./components/TranscriberSettings";
 import { useTranscriber } from "./hooks/useTranscriber";
@@ -39,6 +40,7 @@ function App() {
                                 transcriber={transcriber}
                             />
                         </section>
+                        <ImportedSubtitlesPanel transcriber={transcriber} />
                     </div>
                 </div>
             </div>

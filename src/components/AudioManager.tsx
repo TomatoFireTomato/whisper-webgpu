@@ -6,6 +6,34 @@ import Constants from "../utils/Constants";
 import { Transcriber } from "../hooks/useTranscriber";
 import Progress from "./Progress";
 
+type CorrectionChunk = {
+    text: string;
+    originalText?: string;
+    correctionNote?: string;
+};
+
+function getCorrectionSteps(chunks: CorrectionChunk[]) {
+    return chunks
+        .map((chunk, index) => {
+            const original = chunk.originalText?.trim() ?? "";
+            const corrected = chunk.text?.trim() ?? "";
+            const note = chunk.correctionNote?.trim() ?? "";
+            const changed =
+                Boolean(note) ||
+                (Boolean(original) &&
+                    Boolean(corrected) &&
+                    original !== corrected);
+            return {
+                id: index + 1,
+                original,
+                corrected,
+                note,
+                changed,
+            };
+        })
+        .filter((chunk) => chunk.changed);
+}
+
 export function AudioManager(props: { transcriber: Transcriber }) {
     const [progress, setProgress] = useState<number | undefined>(undefined);
     const [audioData, setAudioData] = useState<
@@ -19,6 +47,7 @@ export function AudioManager(props: { transcriber: Transcriber }) {
     >(undefined);
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [showCorrectionSteps, setShowCorrectionSteps] = useState(false);
 
     const loadFile = useCallback(
         (file: File) => {
@@ -144,8 +173,69 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                             }}
                             isModelLoading={props.transcriber.isModelLoading}
                             isTranscribing={props.transcriber.isBusy}
+                            isFinalizing={
+                                props.transcriber.output?.isFinalizing
+                            }
                         />
                     </div>
+                    {props.transcriber.output?.isBusy && (
+                        <div className='space-y-3 rounded-2xl border border-sky-100 bg-sky-50/80 p-4 text-center'>
+                            <p className='text-sm font-medium text-sky-900'>
+                                {props.transcriber.output.isFinalizing
+                                    ? "正在整理最终结果"
+                                    : "正在转写文本"}
+                            </p>
+                            <Progress
+                                text='转写进度'
+                                percentage={
+                                    props.transcriber.output
+                                        .transcriptionProgress
+                                }
+                            />
+                        </div>
+                    )}
+                    {props.transcriber.output?.isCorrecting && (
+                        <div className='space-y-3 rounded-2xl border border-cyan-100 bg-cyan-50/80 p-4 text-center'>
+                            <p className='text-sm font-medium text-cyan-900'>
+                                正在使用 Qwen 处理字幕
+                            </p>
+                            <Progress
+                                text='Qwen 处理进度'
+                                percentage={
+                                    Math.max(
+                                        props.transcriber.output
+                                            .correctionProgress,
+                                        props.transcriber.output
+                                            .translationProgress,
+                                    )
+                                }
+                            />
+                            {props.transcriber.output.qwenChunks.length > 0 && (
+                                <div className='text-left'>
+                                    <button
+                                        type='button'
+                                        onClick={() =>
+                                            setShowCorrectionSteps(
+                                                (prev) => !prev,
+                                            )
+                                        }
+                                        className='text-xs font-medium text-cyan-700 hover:text-cyan-900'
+                                    >
+                                        {showCorrectionSteps
+                                            ? "收起具体修正过程"
+                                            : "展开具体修正过程"}
+                                    </button>
+                                    {showCorrectionSteps && (
+                                        <CorrectionProcessPanel
+                                            chunks={
+                                                props.transcriber.output.qwenChunks
+                                            }
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     {props.transcriber.progressItems.length > 0 && (
                         <div className='rounded-2xl border border-amber-100 bg-amber-50/80 p-4 text-center'>
                             <p className='mb-3 text-sm font-medium text-amber-900'>
@@ -163,6 +253,44 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                     )}
                 </>
             )}
+        </div>
+    );
+}
+
+function CorrectionProcessPanel(props: { chunks: CorrectionChunk[] }) {
+    const steps = getCorrectionSteps(props.chunks);
+
+    if (steps.length === 0) {
+        return (
+            <div className='mt-3 rounded-xl border border-sky-100 bg-white/80 p-3 text-xs text-slate-500'>
+                修正过程已经开始，当前还没有可展示的明确修正项。
+            </div>
+        );
+    }
+
+    return (
+        <div className='mt-3 max-h-72 space-y-2 overflow-y-auto rounded-xl border border-sky-100 bg-white/80 p-3'>
+            {steps.map((step) => (
+                <div
+                    key={`${step.id}-${step.corrected.slice(0, 16)}`}
+                    className='rounded-lg border border-slate-100 bg-slate-50 p-3'
+                >
+                    <p className='mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500'>
+                        片段 {step.id}
+                    </p>
+                    {step.note && (
+                        <p className='text-xs text-sky-700'>{step.note}</p>
+                    )}
+                    {step.original && step.original !== step.corrected && (
+                        <p className='mt-2 text-sm text-slate-500 line-through decoration-slate-300'>
+                            {step.original}
+                        </p>
+                    )}
+                    <p className='mt-1 text-sm text-slate-800'>
+                        {step.corrected || "处理中…"}
+                    </p>
+                </div>
+            ))}
         </div>
     );
 }
