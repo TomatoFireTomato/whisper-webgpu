@@ -231,12 +231,12 @@
 
                 lineTranslation = document.createElement("div");
                 lineTranslation.style.cssText = [
-                    "font-size:clamp(13px,1.85vw,17px)",
-                    "font-weight:500",
+                    "font-size:clamp(16px,2.35vw,24px)",
+                    "font-weight:700",
                     "opacity:0.9",
                     "color:rgba(255,255,255,.94)",
-                    "line-height:1.4",
-                    "text-shadow:0 1px 1px rgba(0,0,0,.35)",
+                    "line-height:1.35",
+                    "text-shadow:0 1px 2px rgba(0,0,0,.45)",
                 ].join(";");
 
                 card.appendChild(lineSource);
@@ -268,10 +268,6 @@
                 16,
                 Math.min(34, Math.round(base * 0.05)),
             );
-            const translationSize = Math.max(
-                13,
-                Math.min(24, Math.round(sourceSize * 0.72)),
-            );
             const cardPadY = Math.max(8, Math.round(sourceSize * 0.45));
             const cardPadX = Math.max(12, Math.round(sourceSize * 0.7));
             const radius = Math.max(8, Math.round(sourceSize * 0.45));
@@ -282,7 +278,7 @@
             card.style.borderRadius = `${radius}px ${radius}px 0 0`;
             lineSource.style.fontSize = `${sourceSize}px`;
             lineSource.style.marginBottom = `${Math.max(4, Math.round(sourceSize * 0.25))}px`;
-            lineTranslation.style.fontSize = `${translationSize}px`;
+            lineTranslation.style.fontSize = `${sourceSize}px`;
         }
 
         function bindResizeObserver() {

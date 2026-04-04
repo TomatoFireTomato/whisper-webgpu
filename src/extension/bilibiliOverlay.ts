@@ -73,12 +73,12 @@ export function injectBilibiliSubtitleOverlay(
     /** 译文：次要一行 */
     const lineTranslation = document.createElement("div");
     lineTranslation.style.cssText = [
-        "font-size:clamp(13px,1.85vw,17px)",
-        "font-weight:500",
+        "font-size:clamp(16px,2.35vw,24px)",
+        "font-weight:700",
         "opacity:0.9",
         "color:rgba(255,255,255,.94)",
-        "line-height:1.4",
-        "text-shadow:0 1px 1px rgba(0,0,0,.35)",
+        "line-height:1.35",
+        "text-shadow:0 1px 2px rgba(0,0,0,.45)",
     ].join(";");
 
     card.appendChild(lineSource);
