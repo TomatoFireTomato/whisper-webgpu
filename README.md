@@ -1,188 +1,345 @@
-# Sidebar Whisper 使用教程
+# Sidebar Whisper
 
-**Sidebar Whisper** 是一款 Chrome 扩展：在**侧边栏**里用浏览器本地的 **Whisper + WebGPU** 做语音转文字，音频与转写过程**默认不离开你的设备**（模型与推理在本地完成）。
+Sidebar Whisper 是一个基于 **Whisper + WebGPU + Transformers.js** 的浏览器端语音转写工具。  
+它同时支持两种使用方式：
 
----
+- **网页版**
+- **Chrome / Edge 插件版**
 
-## 一、使用前准备
-
-1. **浏览器**：建议使用 **Chrome** 或 **Edge**（Chromium 系），版本 **≥ 120**，且已开启 **WebGPU**。  
-   - 若打开扩展后提示「不支持 WebGPU」，请更新浏览器或换用上述浏览器。
-
-2. **安装扩展**（任选一种）：
-   - **开发者模式加载**：解压构建产物中的 `dist` 文件夹 → 打开 `chrome://extensions` → 打开「开发者模式」→ **加载已解压的扩展程序** → 选择该 `dist` 目录。  
-   - **从 GitHub 下载构建包**：仓库 **Releases** 下载 **`sidebar-whisper-dist.zip`**，解压后同上加载其中的 `dist`；也可以在 **Actions** → 最新成功的 **Build** → 底部 **Artifacts** 下载构建产物。
-
-3. **打开方式**：点击浏览器工具栏上的扩展图标，会在**侧边栏**打开 Sidebar Whisper（无需新开标签页）。
+两者都能在浏览器本地做 Whisper 转写，但**插件版的能力更完整**，尤其适合“转写字幕 -> 导出 -> 回到视频页叠加播放”的工作流。
 
 ---
 
-## 二、准备音频
+## 功能概览
 
-1. **本地文件**：在「音频」区域 **点击或拖拽** 常见音频格式（如 mp3、wav、m4a 等）。
+### 网页版能做什么
 
-2. **在线视频**：扩展内不直接解析视频站链接。请先到 [Cobalt](https://cobalt.tools/) 等工具页面，粘贴视频链接并**只下载音频**，再回到本扩展上传下载好的文件。请遵守第三方服务与内容的版权规定。
+- 在浏览器里本地运行 Whisper 做音频转写
+- 查看转写结果
+- 导出原始字幕文件
+- 手动导入已有字幕文件
+- 手动触发 Qwen 处理，生成单独的 Qwen 处理稿
 
----
+### 插件版额外能做什么
 
-## 三、转写设置（左侧「转写配置」）
+- 以浏览器侧边栏形式使用，不用单独开网页标签
+- 可以把字幕直接**发送到当前视频页面**
+- 已发送字幕后，可在页面上做外挂字幕展示
+- 对没有现成译文的字幕，可继续走页面内在线翻译流程
+- 更适合 B 站等视频页面的双语字幕叠加
 
-- **模型**：按需选择体积与速度；设备内存/显存紧张时可先试较小模型。  
-- **多语言模式**：开启后可选择**源语言**；关闭时按英文等默认逻辑。  
-- **Hugging Face 镜像**：国内访问模型较慢时，可开启镜像加速下载。  
-- **字幕翻译服务**：向 B 站页面发送双语字幕时，会使用此处选择的翻译后端（如 Bing、Google 等）；默认一般为 Bing。
+### 两者最重要的区别
 
-设置会保存在本机浏览器，关闭侧边栏后再打开仍会保留。
+- **网页版**：偏“本地转写与文件处理工具”
+- **插件版**：偏“本地转写 + 页面字幕播放工具”
 
----
+一句话说：
 
-## 四、开始转写
-
-1. 选好音频并确认设置后，点击 **「开始转写」**（或同类按钮）。  
-2. **首次使用**某模型时，需要从网络拉取模型文件，请耐心等待；进度会在界面中显示。  
-3. 转写过程中可看到实时片段；完成后会显示速度与完整结果。
-
----
-
-## 五、查看与管理结果
-
-- **转写结果**以**列表**展示：每条记录一行，默认**收起**详细时间轴；点击左侧区域可**展开**查看逐句与时间戳。  
-- **历史记录**会缓存在本地（不含音频），可展开列表、点击加载、删除单条或清空。  
-- 每条记录右侧可 **导出 SRT / TXT / JSON**，或将字幕 **发送到当前标签页**（适用于 B 站等已适配页面；发送后会按播放进度叠加字幕，翻译在后台分批进行）。
+- 如果你只是想转写、导出、交给别的大模型继续处理，用**网页版**就够
+- 如果你还想把字幕直接打到视频页面上播放，用**插件版**
 
 ---
 
-## 六、常见问题
+## 推荐工作流
 
-| 现象 | 建议 |
-|------|------|
-| 提示不支持 WebGPU | 换用最新 Chrome/Edge，检查 `chrome://gpu` |
-| 转写报错或浏览器卡死 | 换更小模型、关闭占用 GPU 的页面、减少同时打开的标签 |
-| 发送到网页无反应 | 确认当前标签为支持页面（如 B 站视频页），并已允许扩展访问该站 |
-| 字幕翻译很慢 | 属正常现象；可先看到原文，译文会随进度更新 |
+如果你追求更高的字幕质量，推荐这样用：
+
+1. 先上传音频做 **原始转写**
+2. 导出 **原始字幕文件**
+3. 把原始字幕交给更强的大模型做优化和翻译
+4. 回到 Sidebar Whisper，使用 **手动导入字幕**
+5. 再把处理好的字幕 **发送到页面**
+
+这个方案通常比直接依赖内置 Qwen 处理更稳，尤其适合：
+
+- 日语字幕
+- 长视频
+- 专有名词很多的内容
+- 对翻译自然度要求比较高的场景
 
 ---
 
-## 七、开发者与本仓库
+## 当前产品逻辑
 
-本地开发与构建：
+### 1. 原始转写始终保留
+
+无论你后面是否使用 Qwen，Whisper 的原始转写结果都会保留为一份独立文件，不会被覆盖。
+
+### 2. Qwen 处理是手动触发
+
+点击 **Qwen 处理** 后，会生成一份**单独的 Qwen 处理稿**：
+
+- 包含修正后的原文
+- 包含生成后的译文
+- 不影响原始转写稿
+
+### 3. 发送字幕时可选来源
+
+在插件版里，发送字幕时可以选择：
+
+- 原始转写稿
+- Qwen 处理稿
+- 手动导入的字幕文件
+
+### 4. 手动导入字幕是独立区域
+
+“手动导入字幕”不和“转写结果”混在一起，而是独立成一块，专门用于：
+
+- 导入 `JSON`
+- 导入 `SRT`
+- 发送到页面
+- 导出和删除导入记录
+
+---
+
+## 安装与运行
+
+## 网页版
+
+本地运行：
 
 ```bash
 npm install
-npm run dev          # 开发调试
-npm run build        # 生成 dist，用于加载扩展
+npm run dev
 ```
 
-- **GitHub Actions**：
-  - 推送到 `main` 会执行构建，并上传 **`sidebar-whisper-dist`** 与 **`sidebar-whisper-dist.zip`**；
-  - 推送标签（如 `v1.0.0`）会自动创建 GitHub Release，并附带 **`sidebar-whisper-dist.zip`**；
-  - `main` 分支推送/手动运行时同时部署 GitHub Pages，用于在线预览构建结果。
-- 技术栈：基于 [Transformers.js](https://github.com/xenova/transformers.js) 与 Whisper 模型在浏览器中推理。
-
-## 八、扩展 ID 与发布建议
-
-### 1. 固定扩展 ID
-
-为了让用户在**更新插件后尽量复用模型缓存**，必须长期保持**同一个扩展 ID**。
-
-本仓库已支持通过构建环境变量 `EXTENSION_PUBLIC_KEY` 注入 `manifest.json` 中的 `key` 字段：
-
-1. 在 Chrome Web Store Developer Dashboard 创建扩展条目；  
-2. 获取该扩展的 **public key**；  
-3. 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中新增 secret：`EXTENSION_PUBLIC_KEY`；  
-4. GitHub Actions 构建时会自动把该公钥写入 `manifest.json`，从而固定扩展 ID。  
-
-如果本地手动构建，也可以先在 shell 中导出：
+本地构建：
 
 ```bash
-export EXTENSION_PUBLIC_KEY='你的扩展公钥'
 npm run build
 ```
 
-### 2. 推荐发布方式
-
-最适合长期给别人使用的方式是：
-
-1. **正式版**：发布到 **Chrome Web Store**  
-   - 用户自动更新；
-   - 扩展 ID 稳定；
-   - 更新后更有机会继续使用已缓存的模型文件。
-
-2. **预览版 / 测试版**：使用 **GitHub Release**  
-   - 给测试用户下载 `sidebar-whisper-dist.zip`；
-   - 适合快速验证新功能；
-   - 不建议把“手动下载并覆盖安装”作为长期正式更新方式。
-
-### 3. 建议的发布流程
-
-日常开发：
+构建后可用：
 
 ```bash
-git push origin main
+npm run preview
 ```
 
-发布测试包：
+如果仓库启用了 GitHub Pages，那么 `main` 分支构建后也会自动部署网页版本。
+
+### 网页版限制
+
+- 不能直接把字幕发送到当前标签页
+- 不能调用扩展侧边栏能力
+- 不能像插件版那样直接注入视频页字幕层
+
+---
+
+## 插件版
+
+### 本地安装
+
+1. 构建项目：
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+npm install
+npm run build
 ```
 
-之后 GitHub Actions 会自动：
+2. 打开浏览器扩展页：
 
-1. 构建扩展；
-2. 打包 `sidebar-whisper-dist.zip`；
-3. 创建对应的 GitHub Release；
-4. 把 zip 附件挂到 Release 页面；
-5. 如果已配置 Chrome Web Store 发布凭据，则自动上传并发布到商店。
+- Chrome / Edge 打开 `chrome://extensions`
+- 打开“开发者模式”
 
-正式发布时：
+3. 选择 **加载已解压的扩展程序**
+4. 选择构建后的 `dist` 目录
 
-1. 打 tag 并推送；
-2. GitHub Actions 自动构建 Release；
-3. 若已配置商店发布凭据，则自动上传到 Chrome Web Store 的同一个扩展条目并发布更新。
+### 从 GitHub 下载
 
-这样做可以同时兼顾：
+你也可以直接从 GitHub 下载构建产物：
 
-- GitHub 上方便下载测试版；
-- Chrome Web Store 上稳定更新正式版；
-- 扩展 ID 保持不变，模型缓存更容易沿用。
+- **Actions** 页面下载 artifact
+- **Releases** 页面下载 `sidebar-whisper-dist.zip`
 
-### 4. 一键发包到 Chrome Web Store
+解压后，再按上面的方式加载 `dist`。
 
-本仓库已经接入了自动发布工作流：推送 `v*` tag 时，除了生成 GitHub Release，还会在配置完整时自动上传并发布到 Chrome Web Store。
+---
 
-你需要在 GitHub 仓库里配置以下内容：
+## 使用说明
 
-#### GitHub Secrets
+## 1. 准备音频
+
+支持两种方式：
+
+- 本地音频文件上传
+- 先从第三方工具下载音频，再上传到本工具
+
+当前界面里已经给了推荐入口，例如：
+
+- [Cobalt](https://cobalt.tools/)
+- [Lemondl](https://lemondl.com/)
+
+建议先把在线视频转成音频，再导入本工具。
+
+## 2. 选择模型
+
+可以在左侧配置里选择 Whisper 模型。
+
+一般建议：
+
+- 机器较弱：先用 `whisper-tiny` / `whisper-base`
+- 机器较强：可尝试更大的模型
+
+## 3. 开始转写
+
+点击 **开始转写** 后：
+
+- 首次会下载模型
+- 界面会显示模型下载进度
+- 然后显示转写进度
+- Whisper 完成后会整理最终结果
+
+## 4. Qwen 处理
+
+转写完成后，你可以选择：
+
+- 直接导出原始字幕
+- 或点击 **Qwen 处理**
+
+Qwen 处理会生成一份独立的处理稿，不会覆盖原始稿。
+
+## 5. 导出
+
+当前支持导出：
+
+- 原始 `SRT`
+- 原始 `TXT`
+- 原始 `JSON`
+- Qwen `SRT`
+- Qwen `TXT`
+- Qwen `JSON`
+
+其中 Qwen 导出项只会在已经完成 Qwen 处理后出现。
+
+## 6. 手动导入字幕
+
+支持导入：
+
+- `JSON`
+- `SRT`
+
+适合把外部大模型处理好的字幕重新导入，再发送到页面。
+
+---
+
+## 页面字幕说明
+
+插件版支持把字幕发送到当前页面。
+
+当前实现重点是：
+
+- 能把字幕叠加到视频区域
+- 原文和译文会一起显示
+- 字号跟随视频区域缩放
+- 字幕位置贴近视频底部
+
+如果发送的是：
+
+- **原始字幕**
+  页面会继续走在线翻译流程
+- **Qwen 处理稿**
+  如果已有译文，则直接展示双语
+- **手动导入字幕**
+  如果导入文件中已有译文，也会直接展示双语
+
+---
+
+## 缓存与数据
+
+### 本地会保存什么
+
+- 转写历史
+- UI 设置
+- 翻译服务选择
+- 浏览器模型缓存
+
+### 模型缓存说明
+
+模型文件通常会缓存在浏览器的扩展存储环境里。  
+如果扩展 ID 稳定，后续更新版本时更有机会继续复用缓存。
+
+---
+
+## 固定扩展 ID
+
+如果你准备长期分发插件版，建议固定扩展 ID。
+
+当前仓库已经支持通过环境变量 `EXTENSION_PUBLIC_KEY` 在构建时注入 `manifest.json` 的 `key` 字段。
+
+### 配置方式
+
+GitHub 仓库中配置一个 secret：
 
 - `EXTENSION_PUBLIC_KEY`
-  - 你的 Chrome 扩展 public key，用来固定扩展 ID。
 
-- `CWS_SERVICE_ACCOUNT_JSON`
-  - 具有 Chrome Web Store API 权限的 Google Cloud service account JSON。
+它的值是扩展公钥的单行字符串。
 
-#### GitHub Repository Variables
+### 如果不配置
 
-- `CWS_EXTENSION_ID`
-  - 你的 Chrome 扩展 ID。
+不配置也能正常构建和使用，但可能有这些影响：
 
-- `CWS_PUBLISHER_ID`
-  - 你的 Chrome Web Store publisher ID。
+- 扩展 ID 不稳定
+- 用户更新时更像“重新装了一个扩展”
+- 模型缓存和本地存储的延续性更差
 
-#### 发布命令
+---
+
+## GitHub Actions
+
+当前仓库已经配置好了自动化打包。
+
+### 推送到 `main`
+
+会自动执行：
+
+- 安装依赖
+- 构建项目
+- 上传 `dist` artifact
+- 上传 `sidebar-whisper-dist.zip` artifact
+- 部署 GitHub Pages（如果已开启）
+
+### 推送 `v*` tag
+
+会自动执行：
+
+- 构建项目
+- 生成 `sidebar-whisper-dist.zip`
+- 创建 GitHub Release
+- 把 zip 挂到 Release 页面
+
+当前 **不再自动发布到 Chrome Web Store**。  
+也就是说，你暂时不需要配置商店发布相关的 secrets / variables。
+
+---
+
+## 开发命令
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+npm install
+npm run dev
+npm run build
+npm run preview
+npm run lint
 ```
 
-工作流会自动执行：
+---
 
-1. 构建扩展；
-2. 生成 `sidebar-whisper-dist.zip`；
-3. 创建 GitHub Release；
-4. 上传 zip 附件；
-5. 调用 Chrome Web Store API 上传并发布该版本。
+## 技术栈
 
-如果没有配置 `CWS_SERVICE_ACCOUNT_JSON`、`CWS_EXTENSION_ID` 或 `CWS_PUBLISHER_ID`，工作流会只生成 GitHub Release，不会尝试商店发布。
+- [Transformers.js](https://github.com/xenova/transformers.js)
+- Whisper
+- Qwen2.5-0.5B-Instruct
+- React
+- Vite
+- Chrome Extension Manifest V3
+
+---
+
+## 适合谁
+
+这个项目尤其适合：
+
+- 想在本地浏览器里跑 Whisper 的用户
+- 想做外挂字幕播放的用户
+- 想先拿原始字幕，再交给外部大模型精修的用户
+- 想分发一个可通过 GitHub 自动打包的浏览器插件项目的开发者
