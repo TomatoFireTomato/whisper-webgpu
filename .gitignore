@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local extension signing keys
+extension-key.pem
+extension-key.pub
