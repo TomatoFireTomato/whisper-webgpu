@@ -136,6 +136,17 @@ function getTranslatedChunkPairs(chunks: ChunkList) {
         .filter((chunk) => chunk.text && chunk.translation);
 }
 
+function buildExportFilenameBase(title: string, kind: "raw" | "qwen"): string {
+    const fallback = "subtitle";
+    const trimmed = (title || "").trim();
+    const withoutExtension = trimmed.replace(/\.[^./\\]+$/, "").trim();
+    const safeBase =
+        (withoutExtension || trimmed || fallback)
+            .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+            .trim() || fallback;
+    return `${safeBase}-${kind}`;
+}
+
 export default function Transcript({ transcribedData, transcriber }: Props) {
     const divRef = useRef<HTMLDivElement>(null);
     const [overlayHint, setOverlayHint] = useState<string | null>(null);
@@ -452,22 +463,23 @@ export default function Transcript({ transcribedData, transcriber }: Props) {
 
     const renderExportMenu = (record: ViewRecord) => {
         const exportMenuOpen = openExportMenu === record.id;
+        const rawFileBase = buildExportFilenameBase(record.title, "raw");
+        const qwenFileBase = buildExportFilenameBase(record.title, "qwen");
         const items = [
             {
                 key: "raw-srt",
                 label: "原始 SRT",
-                onClick: () => exportChunks(record.rawChunks, "transcript-raw", "srt"),
+                onClick: () => exportChunks(record.rawChunks, rawFileBase, "srt"),
             },
             {
                 key: "raw-txt",
                 label: "原始 TXT",
-                onClick: () => exportChunks(record.rawChunks, "transcript-raw", "txt"),
+                onClick: () => exportChunks(record.rawChunks, rawFileBase, "txt"),
             },
             {
                 key: "raw-json",
                 label: "原始 JSON",
-                onClick: () =>
-                    exportChunks(record.rawChunks, "transcript-raw", "json"),
+                onClick: () => exportChunks(record.rawChunks, rawFileBase, "json"),
             },
         ];
         if (record.hasQwenCorrection && record.qwenChunks.length > 0) {
@@ -475,20 +487,18 @@ export default function Transcript({ transcribedData, transcriber }: Props) {
                 {
                     key: "qwen-srt",
                     label: "Qwen SRT",
-                    onClick: () =>
-                        exportChunks(record.qwenChunks, "transcript-qwen", "srt"),
+                    onClick: () => exportChunks(record.qwenChunks, qwenFileBase, "srt"),
                 },
                 {
                     key: "qwen-txt",
                     label: "Qwen TXT",
-                    onClick: () =>
-                        exportChunks(record.qwenChunks, "transcript-qwen", "txt"),
+                    onClick: () => exportChunks(record.qwenChunks, qwenFileBase, "txt"),
                 },
                 {
                     key: "qwen-json",
                     label: "Qwen JSON",
                     onClick: () =>
-                        exportChunks(record.qwenChunks, "transcript-qwen", "json"),
+                        exportChunks(record.qwenChunks, qwenFileBase, "json"),
                 },
             );
         }
