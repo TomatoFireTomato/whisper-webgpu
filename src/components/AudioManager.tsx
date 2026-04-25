@@ -12,6 +12,214 @@ type CorrectionChunk = {
     correctionNote?: string;
 };
 
+async function resampleAudioBuffer(
+    buffer: AudioBuffer,
+    targetSampleRate: number,
+) {
+    if (buffer.sampleRate === targetSampleRate) {
+        return buffer;
+    }
+
+    const frameCount = Math.max(
+        1,
+        Math.ceil(buffer.duration * targetSampleRate),
+    );
+    const offlineContext = new OfflineAudioContext(
+        buffer.numberOfChannels,
+        frameCount,
+        targetSampleRate,
+    );
+    const source = offlineContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(offlineContext.destination);
+    source.start(0);
+
+    try {
+        return await offlineContext.startRendering();
+    } finally {
+        source.disconnect();
+    }
+}
+
+function isLikelyMp3File(file: File, arrayBuffer: ArrayBuffer) {
+    const mimeType = file.type.toLowerCase();
+    if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return true;
+    if (file.name.toLowerCase().endsWith(".mp3")) return true;
+
+    const bytes = new Uint8Array(arrayBuffer);
+    if (
+        bytes.length >= 3 &&
+        bytes[0] === 0x49 &&
+        bytes[1] === 0x44 &&
+        bytes[2] === 0x33
+    ) {
+        return true;
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+        return true;
+    }
+
+    return false;
+}
+
+function createAudioBufferFromChannels(
+    channelData: Float32Array[],
+    sampleRate: number,
+) {
+    const channelCount = Math.max(channelData.length, 1);
+    const length = Math.max(channelData[0]?.length ?? 0, 1);
+    const context = new OfflineAudioContext(channelCount, length, sampleRate);
+    const buffer = context.createBuffer(channelCount, length, sampleRate);
+
+    for (let i = 0; i < channelCount; i++) {
+        const channel = channelData[i];
+        if (!channel) continue;
+        buffer.copyToChannel(new Float32Array(channel), i);
+    }
+
+    return buffer;
+}
+
+async function decodeAudioFile(arrayBuffer: ArrayBuffer) {
+    const audioContext = new AudioContext();
+
+    try {
+        const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+        return await resampleAudioBuffer(decoded, Constants.SAMPLING_RATE);
+    } finally {
+        await audioContext.close().catch(() => undefined);
+    }
+}
+
+async function decodeMp3WithWasm(arrayBuffer: ArrayBuffer) {
+    const { MPEGDecoder } = await import("mpg123-decoder");
+    const decoder = new MPEGDecoder();
+    await decoder.ready;
+
+    try {
+        const decoded = decoder.decode(new Uint8Array(arrayBuffer));
+        if (
+            !decoded ||
+            !Array.isArray(decoded.channelData) ||
+            decoded.channelData.length === 0 ||
+            !decoded.samplesDecoded
+        ) {
+            throw new Error("mp3 解码器没有返回可用的音频数据。");
+        }
+
+        const usableChannels = decoded.channelData.map((channel) =>
+            channel.length === decoded.samplesDecoded
+                ? channel
+                : channel.slice(0, decoded.samplesDecoded),
+        );
+        const buffer = createAudioBufferFromChannels(
+            usableChannels,
+            decoded.sampleRate || Constants.SAMPLING_RATE,
+        );
+
+        return await resampleAudioBuffer(buffer, Constants.SAMPLING_RATE);
+    } finally {
+        decoder.free();
+    }
+}
+
+async function decodeAudioFileWithMediaElement(
+    url: string,
+    onProgress?: (progress: number) => void,
+) {
+    const audio = new Audio();
+    audio.src = url;
+    audio.preload = "auto";
+    audio.crossOrigin = "anonymous";
+    audio.muted = true;
+    audio.setAttribute("playsinline", "true");
+    audio.playbackRate = 4;
+
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaElementSource(audio);
+    const processor = audioContext.createScriptProcessor(4096, 2, 1);
+
+    const chunks: Float32Array[] = [];
+    let totalLength = 0;
+
+    processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer;
+        const mono = new Float32Array(input.length);
+
+        if (input.numberOfChannels >= 2) {
+            const left = input.getChannelData(0);
+            const right = input.getChannelData(1);
+            for (let i = 0; i < input.length; i++) {
+                mono[i] = (left[i] + right[i]) / 2;
+            }
+        } else {
+            mono.set(input.getChannelData(0));
+        }
+
+        chunks.push(mono);
+        totalLength += mono.length;
+
+        if (audio.duration > 0) {
+            onProgress?.(Math.min(audio.currentTime / audio.duration, 1));
+        }
+    };
+
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const cleanup = () => {
+                audio.onloadedmetadata = null;
+                audio.onerror = null;
+                audio.onended = null;
+                audio.ontimeupdate = null;
+            };
+
+            audio.onerror = () => {
+                cleanup();
+                reject(new Error("浏览器无法通过媒体元素读取这个音频文件。"));
+            };
+            audio.onended = () => {
+                cleanup();
+                resolve();
+            };
+            audio.ontimeupdate = () => {
+                if (audio.duration > 0) {
+                    onProgress?.(Math.min(audio.currentTime / audio.duration, 1));
+                }
+            };
+            audio.onloadedmetadata = async () => {
+                try {
+                    await audioContext.resume();
+                    await audio.play();
+                } catch (error) {
+                    cleanup();
+                    reject(error);
+                }
+            };
+        });
+
+        const pcm = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            pcm.set(chunk, offset);
+            offset += chunk.length;
+        }
+
+        const buffer = audioContext.createBuffer(1, pcm.length, audioContext.sampleRate);
+        buffer.copyToChannel(pcm, 0);
+        onProgress?.(1);
+        return await resampleAudioBuffer(buffer, Constants.SAMPLING_RATE);
+    } finally {
+        audio.pause();
+        audio.src = "";
+        processor.disconnect();
+        source.disconnect();
+        await audioContext.close().catch(() => undefined);
+    }
+}
+
 function getCorrectionSteps(chunks: CorrectionChunk[]) {
     return chunks
         .map((chunk, index) => {
@@ -72,19 +280,48 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                     setProgress(undefined);
                     return;
                 }
-                const audioCTX = new AudioContext({
-                    sampleRate: Constants.SAMPLING_RATE,
-                });
-                const decoded = await audioCTX.decodeAudioData(
-                    arrayBuffer.slice(0),
-                );
-                setProgress(undefined);
-                setAudioData({
-                    buffer: decoded,
-                    url: blobUrl,
-                    mimeType,
-                    fileName: file.name || "音频",
-                });
+                try {
+                    let decoded: AudioBuffer;
+                    const allowMp3Fallback = isLikelyMp3File(file, arrayBuffer);
+                    try {
+                        decoded = await decodeAudioFile(arrayBuffer);
+                    } catch (primaryError) {
+                        if (allowMp3Fallback) {
+                            try {
+                                decoded = await decodeMp3WithWasm(arrayBuffer);
+                            } catch {
+                                setProgress(0);
+                                decoded = await decodeAudioFileWithMediaElement(
+                                    blobUrl,
+                                    setProgress,
+                                );
+                            }
+                        } else {
+                            setProgress(0);
+                            decoded = await decodeAudioFileWithMediaElement(
+                                blobUrl,
+                                setProgress,
+                            ).catch(() => {
+                                throw primaryError;
+                            });
+                        }
+                    }
+                    setAudioData({
+                        buffer: decoded,
+                        url: blobUrl,
+                        mimeType,
+                        fileName: file.name || "音频",
+                    });
+                } catch (error) {
+                    URL.revokeObjectURL(blobUrl);
+                    const message =
+                        error instanceof Error && error.message
+                            ? error.message
+                            : "无法解码这个音频文件。请尝试重新导出为 mp3、wav 或 m4a 后再试。";
+                    alert(`音频加载失败：${message}`);
+                } finally {
+                    setProgress(undefined);
+                }
             };
             reader.readAsArrayBuffer(file);
         },
