@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sidebar Whisper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minimum_chrome_version": "120",
   "description": "Local Whisper speech-to-text in the side panel (WebGPU). 浏览器侧栏本地语音转写。",
   "action": {

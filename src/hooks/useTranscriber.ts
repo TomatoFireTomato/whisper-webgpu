@@ -76,7 +76,11 @@ export interface Transcriber {
     progressItems: ProgressItem[];
     start: (
         audioData: AudioBuffer | undefined,
-        meta?: { fileName?: string },
+        meta?: {
+            fileName?: string;
+            onComplete?: (data: TranscriberData) => void;
+            onError?: (error: Error) => void;
+        },
     ) => void;
     processCurrentTranscriptWithQwen: () => void;
     output?: TranscriberData;
@@ -176,6 +180,10 @@ function persistCurrentHistoryItem(
 
 export function useTranscriber(): Transcriber {
     const pendingFileNameRef = useRef("未命名音频");
+    const pendingOnCompleteRef = useRef<
+        ((data: TranscriberData) => void) | null
+    >(null);
+    const pendingOnErrorRef = useRef<((error: Error) => void) | null>(null);
 
     const [transcriptHistory, setTranscriptHistory] = useState<
         TranscriptHistoryItem[]
@@ -261,6 +269,15 @@ export function useTranscriber(): Transcriber {
                             : prev,
                     );
                     setTranscriptHistory(loadTranscriptHistory());
+
+                    const onComplete = pendingOnCompleteRef.current;
+                    pendingOnCompleteRef.current = null;
+                    pendingOnErrorRef.current = null;
+                    onComplete?.({
+                        ...next,
+                        title: saved.fileName,
+                        currentHistoryId: saved.id,
+                    });
                 }
                 break;
             }
@@ -324,7 +341,7 @@ export function useTranscriber(): Transcriber {
             case "ready":
                 setIsModelLoading(false);
                 break;
-            case "error":
+            case "error": {
                 setIsBusy(false);
                 setTranscript((prev) =>
                     prev
@@ -338,8 +355,17 @@ export function useTranscriber(): Transcriber {
                         : prev,
                 );
                 setIsModelLoading(false);
-                alert(`发生错误: ${formatWorkerError(message.data)}`);
+                const errorMessage = formatWorkerError(message.data);
+                const onError = pendingOnErrorRef.current;
+                pendingOnErrorRef.current = null;
+                pendingOnCompleteRef.current = null;
+                if (onError) {
+                    onError(new Error(errorMessage));
+                } else {
+                    alert(`发生错误: ${errorMessage}`);
+                }
                 break;
+            }
             case "done":
                 setProgressItems((prev) =>
                     prev.filter((item) => item.file !== message.file),
@@ -434,10 +460,19 @@ export function useTranscriber(): Transcriber {
     }, []);
 
     const start = useCallback(
-        (audioData: AudioBuffer | undefined, meta?: { fileName?: string }) => {
+        (
+            audioData: AudioBuffer | undefined,
+            meta?: {
+                fileName?: string;
+                onComplete?: (data: TranscriberData) => void;
+                onError?: (error: Error) => void;
+            },
+        ) => {
             if (!audioData) return;
 
             pendingFileNameRef.current = meta?.fileName?.trim() || "未命名音频";
+            pendingOnCompleteRef.current = meta?.onComplete ?? null;
+            pendingOnErrorRef.current = meta?.onError ?? null;
             setTranscript(undefined);
             setIsBusy(true);
 

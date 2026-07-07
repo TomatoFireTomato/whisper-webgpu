@@ -5,7 +5,8 @@ import type {
     Transcriber,
     TranscriberData,
 } from "../hooks/useTranscriber";
-import { chunksToCues, filterValidChunks } from "../utils/subtitleCues";
+import { chunksToCues } from "../utils/subtitleCues";
+import { chunksToSrt, saveBlob } from "../utils/subtitleExport";
 import { sendSubtitlesToActiveTab } from "../extension/overlayTab";
 import type { TranscriptHistoryItem } from "../utils/transcriptHistory";
 import Modal from "./modal/Modal";
@@ -157,56 +158,14 @@ export default function Transcript({ transcribedData, transcriber }: Props) {
         variants: SendVariant[];
     } | null>(null);
 
-    const saveBlob = (blob: Blob, filename: string) => {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = filename;
-        link.click();
-        URL.revokeObjectURL(url);
-    };
-
-    const formatTime = (seconds: number): string => {
-        if (typeof seconds !== "number" || !isFinite(seconds)) seconds = 0;
-        const totalMs = Math.round(seconds * 1000);
-        const ms = totalMs % 1000;
-        const totalSec = Math.floor(totalMs / 1000);
-        const s = totalSec % 60;
-        const m = Math.floor((totalSec % 3600) / 60);
-        const h = Math.floor(totalSec / 3600);
-        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
-    };
-
-    const jsonToSrt = (json: ReturnType<typeof filterValidChunks>): string => {
-        const lines: string[] = [];
-        for (let i = 0; i < json.length; i++) {
-            const seg = json[i];
-            const start = formatTime(Number(seg.timestamp[0]));
-            const end = formatTime(Number(seg.timestamp[1] ?? seg.timestamp[0]));
-            const text = (seg.text || "")
-                .trim()
-                .replace(/\r\n/g, "\n")
-                .replace(/\r/g, "\n");
-            const tr = (seg as { translation?: string }).translation?.trim();
-            lines.push(String(i + 1));
-            lines.push(`${start} --> ${end}`);
-            lines.push(text);
-            if (tr) lines.push(tr);
-            lines.push("");
-        }
-        return lines.join("\n").trim() + "\n";
-    };
-
     const exportChunks = (
         chunks: ChunkList,
         filenameBase: string,
         format: "srt" | "txt" | "json",
     ) => {
         if (format === "srt") {
-            const filteredData = filterValidChunks(chunks);
-            const srtData = jsonToSrt(filteredData);
             saveBlob(
-                new Blob([srtData], { type: "text/srt" }),
+                new Blob([chunksToSrt(chunks)], { type: "text/srt" }),
                 `${filenameBase}.srt`,
             );
             return;
