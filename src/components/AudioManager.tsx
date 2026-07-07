@@ -9,15 +9,19 @@ import {
     saveBlob,
     stripFileExtension,
 } from "../utils/subtitleExport";
+import { extractAudioWithFfmpeg } from "../utils/ffmpegAudio";
 import Progress from "./Progress";
 
 type BatchStatus = "pending" | "processing" | "done" | "error";
+
+type BatchStage = "decoding" | "transcribing";
 
 type BatchItem = {
     id: string;
     file: File;
     fileName: string;
     status: BatchStatus;
+    stage?: BatchStage;
     error?: string;
     chunkCount?: number;
     exported?: boolean;
@@ -247,20 +251,35 @@ async function decodeWithFallbacks(
     try {
         return await decodeAudioFile(arrayBuffer);
     } catch (primaryError) {
+        // mp3 快速兜底
         if (allowMp3Fallback) {
             try {
                 return await decodeMp3WithWasm(arrayBuffer);
             } catch {
-                onProgress?.(0);
-                return await decodeAudioFileWithMediaElement(blobUrl, onProgress);
+                /* 继续走 ffmpeg / 媒体元素 */
             }
         }
-        onProgress?.(0);
-        return await decodeAudioFileWithMediaElement(blobUrl, onProgress).catch(
-            () => {
-                throw primaryError;
-            },
-        );
+        // ffmpeg.wasm：处理浏览器原生解不了的视频/容器（mkv、mov、ts、flv…）
+        try {
+            onProgress?.(0);
+            const { pcm, sampleRate } = await extractAudioWithFfmpeg(
+                file,
+                onProgress,
+            );
+            return createAudioBufferFromChannels([pcm], sampleRate);
+        } catch (ffmpegError) {
+            // 最后兜底：浏览器媒体元素（能播但 decodeAudioData 解不了的情形）
+            onProgress?.(0);
+            return await decodeAudioFileWithMediaElement(
+                blobUrl,
+                onProgress,
+            ).catch(() => {
+                throw ffmpegError instanceof Error &&
+                    /没有可用的音频|提取音频/.test(ffmpegError.message)
+                    ? ffmpegError
+                    : primaryError;
+            });
+        }
     }
 }
 
@@ -420,14 +439,19 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                 if (batchCancelRef.current) break;
                 updateBatchItem(item.id, {
                     status: "processing",
+                    stage: "decoding",
                     error: undefined,
                 });
                 try {
                     const buffer = await decodeFileToBuffer(item.file);
                     if (batchCancelRef.current) {
-                        updateBatchItem(item.id, { status: "pending" });
+                        updateBatchItem(item.id, {
+                            status: "pending",
+                            stage: undefined,
+                        });
                         break;
                     }
+                    updateBatchItem(item.id, { stage: "transcribing" });
                     const result = await new Promise<TranscriberData>(
                         (resolve, reject) => {
                             props.transcriber.start(buffer, {
@@ -447,6 +471,7 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                     }
                     updateBatchItem(item.id, {
                         status: "done",
+                        stage: undefined,
                         chunkCount: result.chunks.length,
                         exported,
                     });
@@ -455,7 +480,11 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                         error instanceof Error && error.message
                             ? error.message
                             : "转写失败";
-                    updateBatchItem(item.id, { status: "error", error: message });
+                    updateBatchItem(item.id, {
+                        status: "error",
+                        stage: undefined,
+                        error: message,
+                    });
                 }
             }
         } finally {
@@ -520,7 +549,7 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                     ref={inputRef}
                     type='file'
                     multiple
-                    accept='audio/*,.mp3,.wav,.m4a,.ogg,.webm,.flac'
+                    accept='audio/*,video/*,.mp3,.wav,.m4a,.ogg,.webm,.flac,.mp4,.mkv,.mov,.avi,.ts,.flv,.wmv,.m4v'
                     className='hidden'
                     onChange={onInputChange}
                 />
@@ -544,7 +573,7 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                         点击或拖拽音频文件到此处
                     </span>
                     <span className='mt-1.5 text-sm text-slate-500'>
-                        支持常见格式（mp3、wav、m4a 等）· 可一次选择多个文件批量转写
+                        支持音频与视频（mp3、wav、m4a、mp4、mkv、mov 等）· 可一次选择多个文件批量转写
                     </span>
                 </button>
                 {progress !== undefined && (
@@ -641,22 +670,24 @@ export function AudioManager(props: { transcriber: Transcriber }) {
                                     </div>
                                     <BatchStatusBadge status={item.status} />
                                 </div>
-                                {item.status === "processing" && (
-                                    <div className='mt-2'>
-                                        <Progress
-                                            text={
-                                                props.transcriber.output
-                                                    ?.isFinalizing
-                                                    ? "正在收尾"
-                                                    : "转写进度"
-                                            }
-                                            percentage={
-                                                props.transcriber.output
-                                                    ?.transcriptionProgress ?? 0
-                                            }
-                                        />
-                                    </div>
-                                )}
+                                {item.status === "processing" &&
+                                    item.stage === "transcribing" && (
+                                        <div className='mt-2'>
+                                            <Progress
+                                                text={
+                                                    props.transcriber.output
+                                                        ?.isFinalizing
+                                                        ? "正在收尾"
+                                                        : "转写进度"
+                                                }
+                                                percentage={
+                                                    props.transcriber.output
+                                                        ?.transcriptionProgress ??
+                                                    0
+                                                }
+                                            />
+                                        </div>
+                                    )}
                             </li>
                         ))}
                     </ul>
@@ -812,6 +843,13 @@ function BatchStatusLine(props: {
 }) {
     const { item, transcriber } = props;
     if (item.status === "processing") {
+        if (item.stage === "decoding") {
+            return (
+                <p className='mt-0.5 text-xs text-sky-600'>
+                    读取 / 解码中…（视频首次需加载解码器）
+                </p>
+            );
+        }
         const output = transcriber.output;
         return (
             <p className='mt-0.5 text-xs text-sky-600'>

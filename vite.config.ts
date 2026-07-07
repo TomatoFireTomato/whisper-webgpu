@@ -9,6 +9,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
     plugins: [react()],
     base: "./",
+    // ffmpeg.wasm 自带 module worker，交给 Vite 原生 worker 处理，
+    // 不要被 esbuild 预打包破坏 `new Worker(new URL(...))`
+    optimizeDeps: {
+        exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"],
+    },
     build: {
         rollupOptions: {
             input: {
