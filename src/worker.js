@@ -123,6 +123,77 @@ function normalizeChunks(chunks) {
     }));
 }
 
+function toFiniteTimestampPair(timestamp) {
+    if (!Array.isArray(timestamp) || timestamp.length < 2) return null;
+    const start = Number(timestamp[0]);
+    const end = Number(timestamp[1]);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+    if (end <= start) return null;
+    return [Math.max(0, start), Math.max(0, end)];
+}
+
+function shouldBreakSubtitleChunk(current, nextStart, nextText) {
+    const text = current.text.trim();
+    const gap = nextStart - current.timestamp[1];
+    const duration = current.timestamp[1] - current.timestamp[0];
+    const nextWouldBeLong = (text + nextText).trim().length > 42;
+    const endsSentence = /[。！？!?…]+["'”’）\]\】」』]*$/.test(text);
+
+    return (
+        gap > 0.75 ||
+        duration >= 5.5 ||
+        nextWouldBeLong ||
+        (endsSentence && duration >= 1.0)
+    );
+}
+
+function wordTimestampChunksToSubtitleChunks(chunks) {
+    if (!Array.isArray(chunks) || chunks.length === 0) return [];
+
+    const words = chunks
+        .map((chunk) => {
+            const timestamp = toFiniteTimestampPair(chunk?.timestamp);
+            const text = typeof chunk?.text === "string" ? chunk.text : "";
+            if (!timestamp || !text.trim()) return null;
+            return { text, timestamp };
+        })
+        .filter(Boolean);
+
+    const subtitles = [];
+    let current = null;
+
+    for (const word of words) {
+        const [start, end] = word.timestamp;
+        if (!current || shouldBreakSubtitleChunk(current, start, word.text)) {
+            if (current && current.text.trim()) {
+                current.text = current.text.trim();
+                subtitles.push(current);
+            }
+            current = {
+                text: word.text,
+                originalText: word.text,
+                timestamp: [start, end],
+                translation: "",
+                correctionNote: "",
+                finalised: true,
+            };
+            continue;
+        }
+
+        current.text += word.text;
+        current.originalText = current.text;
+        current.timestamp[1] = end;
+    }
+
+    if (current && current.text.trim()) {
+        current.text = current.text.trim();
+        current.originalText = current.text;
+        subtitles.push(current);
+    }
+
+    return subtitles;
+}
+
 function buildTranscriptText(chunks) {
     return chunks.map((chunk) => chunk.text || "").join("").trim();
 }
@@ -1052,7 +1123,7 @@ async function transcribe({
         stride_length_s,
         language,
         task: subtask,
-        return_timestamps: true,
+        return_timestamps: "word",
         force_full_sequences: false,
         streamer,
     }).catch((error) => {
@@ -1067,7 +1138,12 @@ async function transcribe({
 
     if (output === null) return null;
 
-    const resultChunks = normalizeChunks(output.chunks ?? chunks);
+    const wordTimestampChunks = wordTimestampChunksToSubtitleChunks(output.chunks);
+    const resultChunks = normalizeChunks(
+        wordTimestampChunks.length > 0
+            ? wordTimestampChunks
+            : (output.chunks ?? chunks),
+    );
     const result = {
         tps,
         text:
